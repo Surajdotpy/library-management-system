@@ -1,6 +1,14 @@
 import pool from '../../config/db.js';
 import type { Student, CreateStudentDTO, UpdateStudentDTO } from './students.types.js';
 
+// ========== PRICING CONFIGURATION ==========
+// Update prices here - changes automatically apply everywhere
+const PRICING = {
+  '2_hours': { fee: 250, limit: 2 },      // ₹250/month, 2 hours daily
+  '4_hours': { fee: 350, limit: 4 },      // ₹350/month, 4 hours daily
+  'unlimited': { fee: 400, limit: null }  // ₹400/month, no limit
+} as const;
+
 // Get all active students
 export async function getAllStudents(): Promise<Student[]> {
   const query = `
@@ -31,21 +39,10 @@ export async function getStudentById(id: number): Promise<Student | null> {
 
 // Create new student
 export async function createStudent(data: CreateStudentDTO): Promise<Student> {
-  // Calculate monthly_fee and daily_hours_limit based on study_plan
-  let monthly_fee: number;
-  let daily_hours_limit: number | null;
-  
-  // Pricing in Indian Rupees (INR)
-  if (data.study_plan === '2_hours') {
-    monthly_fee = 250;        // ₹250 per month
-    daily_hours_limit = 2;
-  } else if (data.study_plan === '4_hours') {
-    monthly_fee = 350;        // ₹350 per month
-    daily_hours_limit = 4;
-  } else {
-    monthly_fee = 400;        // ₹400 per month
-    daily_hours_limit = null;
-  }
+  // Get pricing from constants - automatically matches study plan
+  const pricing = PRICING[data.study_plan];
+  const monthly_fee = pricing.fee;
+  const daily_hours_limit = pricing.limit;
   
   const query = `
     INSERT INTO students (
@@ -93,22 +90,14 @@ export async function createStudent(data: CreateStudentDTO): Promise<Student> {
 
 // Update existing student
 export async function updateStudent(id: number, data: UpdateStudentDTO): Promise<Student | null> {
-  // If study_plan is being updated, recalculate fees
+  // If study_plan is being updated, recalculate fees from constants
   let monthly_fee: number | undefined;
   let daily_hours_limit: number | null | undefined;
   
-  // Pricing in Indian Rupees (INR)
   if (data.study_plan) {
-    if (data.study_plan === '2_hours') {
-      monthly_fee = 250;      // ₹250 per month
-      daily_hours_limit = 2;
-    } else if (data.study_plan === '4_hours') {
-      monthly_fee = 350;      // ₹350 per month
-      daily_hours_limit = 4;
-    } else {
-      monthly_fee = 400;      // ₹400 per month
-      daily_hours_limit = null;
-    }
+    const pricing = PRICING[data.study_plan];
+    monthly_fee = pricing.fee;
+    daily_hours_limit = pricing.limit;
   }
   
   const query = `

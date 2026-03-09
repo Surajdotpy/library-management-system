@@ -48,10 +48,10 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
-// TODO: Add API routes here
-// app.use('/api/students', studentRoutes);
-// app.use('/api/attendance', attendanceRoutes);
-// app.use('/api/payments', paymentRoutes);
+// API routes
+import studentRoutes from './modules/students/students.routes.js';  // ← ADD THIS
+
+app.use('/api/students', studentRoutes);  // ← ADD THIS
 
 // 404 handler
 app.use((req: Request, res: Response) => {
