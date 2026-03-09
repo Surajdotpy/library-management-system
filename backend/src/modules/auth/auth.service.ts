@@ -13,9 +13,18 @@ export async function findUserByEmail(email: string): Promise<User | null> {
     WHERE email = $1 AND is_active = true
   `;
   
+  console.log('🔍 Looking for email:', email);
+  
   const result = await pool.query(query, [email]);
   
+  console.log('📊 Found users:', result.rows.length);
+  if (result.rows.length > 0) {
+    console.log('👤 User found:', result.rows[0].email);
+    console.log('🔐 Password hash:', result.rows[0].password.substring(0, 20) + '...');
+  }
+  
   if (result.rows.length === 0) {
+    console.log('❌ No user found with this email!');
     return null;
   }
   
@@ -38,11 +47,15 @@ export function generateToken(user: User): string {
   
   return jwt.sign(payload, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN
-  } as jwt.SignOptions);  // ← FIXED: Added type assertion
+  } as jwt.SignOptions);
 }
 
 // Verify JWT token
-export function verifyToken(token: string): JWTPayload | null {
+export function verifyToken(token: string | undefined): JWTPayload | null {
+  if (!token) {
+    return null;
+  }
+  
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     return decoded;
@@ -66,22 +79,38 @@ export function sanitizeUser(user: User): UserResponse {
 
 // Main login function
 export async function loginUser(email: string, password: string): Promise<{ user: User; token: string } | null> {
+  console.log('🔐 LOGIN ATTEMPT:');
+  console.log('   Email:', email);
+  console.log('   Password:', password);
+  
   // Find user by email
   const user = await findUserByEmail(email);
   
   if (!user) {
-    return null;  // User not found
+    console.log('❌ User not found');
+    return null;
   }
+  
+  console.log('✅ User found, checking password...');
+  console.log('   Comparing:', password);
+  console.log('   Against hash:', user.password.substring(0, 30) + '...');
   
   // Verify password
   const isPasswordValid = await verifyPassword(password, user.password);
   
+  console.log('   Password match?', isPasswordValid);
+  
   if (!isPasswordValid) {
-    return null;  // Wrong password
+    console.log('❌ Password verification failed!');
+    return null;
   }
+  
+  console.log('✅ Password correct! Generating token...');
   
   // Generate token
   const token = generateToken(user);
+  
+  console.log('✅ Login successful!');
   
   return { user, token };
 }

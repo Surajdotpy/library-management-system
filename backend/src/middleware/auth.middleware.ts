@@ -6,7 +6,7 @@ import type { AuthRequest } from '../modules/auth/auth.types.js';
 export async function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     // Get token from Authorization header
-    const authHeader = req.headers.authorization;
+    const authHeader = req.get('Authorization');
     
     if (!authHeader) {
       return res.status(401).json({
@@ -26,6 +26,13 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
     }
     
     const token = parts[1];
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: 'Token is missing'
+      });
+    }
     
     // Verify token
     const decoded = verifyToken(token);

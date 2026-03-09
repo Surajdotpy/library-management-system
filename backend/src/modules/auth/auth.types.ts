@@ -1,3 +1,5 @@
+import type { Request } from 'express';  // ← ADD THIS LINE AT TOP
+
 // User from database (matches 'users' table)
 export interface User {
   id: number;

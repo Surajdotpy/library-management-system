@@ -41,6 +41,7 @@ app.get('/', (req: Request, res: Response) => {
     version: '1.0.0',
     endpoints: {
       health: '/health',
+      auth: '/api/auth/login',        // ← Updated
       students: '/api/students',
       attendance: '/api/attendance',
       payments: '/api/payments'
@@ -49,9 +50,11 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 // API routes
-import studentRoutes from './modules/students/students.routes.js';  // ← ADD THIS
+import studentRoutes from './modules/students/students.routes.js';
+import authRoutes from './modules/auth/auth.routes.js';  // ← ADDED
 
-app.use('/api/students', studentRoutes);  // ← ADD THIS
+app.use('/api/auth', authRoutes);      // ← ADDED
+app.use('/api/students', studentRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
