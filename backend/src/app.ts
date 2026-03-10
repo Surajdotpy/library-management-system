@@ -53,10 +53,12 @@ app.get('/', (req: Request, res: Response) => {
 import studentRoutes from './modules/students/students.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
+import paymentRoutes from './modules/payments/payments.routes.js';
 
 app.use('/api/auth', authRoutes);      // ← ADDED
 app.use('/api/students', studentRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
