@@ -1,11 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* ============================================
-   CUSTOM ANIMATIONS
-   ============================================ */
-
+/* Custom Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -59,10 +54,7 @@
   }
 }
 
-/* ============================================
-   UTILITY CLASSES
-   ============================================ */
-
+/* Utility Classes */
 .animate-fade-in {
   animation: fadeIn 0.5s ease-out;
 }
@@ -83,10 +75,7 @@
   animation: spin 1s linear infinite;
 }
 
-/* ============================================
-   CUSTOM SCROLLBAR
-   ============================================ */
-
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -107,10 +96,7 @@
   background: #94a3b8;
 }
 
-/* ============================================
-   CUSTOM FOCUS STYLES
-   ============================================ */
-
+/* Custom Focus Styles */
 *:focus {
   outline: none;
 }
@@ -118,14 +104,4 @@
 *:focus-visible {
   outline: 2px solid #8b5cf6;
   outline-offset: 2px;
-}
-
-/* ============================================
-   SMOOTH TRANSITIONS
-   ============================================ */
-
-* {
-  transition-property: background-color, border-color, color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
 }
