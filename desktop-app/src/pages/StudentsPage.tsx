@@ -1,46 +1,29 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Card, Badge } from '@/components/ui';
-import { AddStudentModal } from '@/components/features/students/AddStudentModal';
-import { useStudents } from '@/lib/hooks/useStudents';
-import { Users, Plus, Search, Loader2, AlertCircle, Phone, Mail, Trash2, Edit } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { STUDY_PLANS } from '@/types';
+import { Card } from '@/components/ui/Card';
+import { studentsApi } from '@/lib/api';
+import { Users, Loader2 } from 'lucide-react';
+import type { Student } from '@/types';
 
 export default function StudentsPage() {
-  const { students, loading, error, createStudent, deleteStudent } = useStudents();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [planFilter, setPlanFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Filter students
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = 
-      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.student_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.phone.includes(searchQuery);
+  useEffect(() => {
+    loadStudents();
+  }, []);
 
-    const matchesPlan = planFilter === 'all' || student.study_plan === planFilter;
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'active' && student.is_active) ||
-      (statusFilter === 'inactive' && !student.is_active);
-
-    return matchesSearch && matchesPlan && matchesStatus;
-  });
-
-  // Get plan details
-  const getPlanDetails = (planValue: string) => {
-    return STUDY_PLANS.find(p => p.value === planValue);
-  };
-
-  // Handle delete with confirmation
-  const handleDelete = async (id: number, name: string) => {
-    if (window.confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`)) {
-      const result = await deleteStudent(id);
-      if (!result.success) {
-        alert(result.error);
-      }
+  const loadStudents = async () => {
+    try {
+      setLoading(true);
+      const data = await studentsApi.getAll();
+      setStudents(data);
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load students');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -48,218 +31,52 @@ export default function StudentsPage() {
     <MainLayout>
       <div className="space-y-6">
         
-        {/* Page Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between"
-        >
+        <div className="flex items-center gap-3">
+          <Users className="w-8 h-8 text-purple-600" />
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Users className="w-8 h-8 text-purple-600" />
-              Students Management
-            </h1>
-            <p className="text-gray-600 mt-1">
-              {filteredStudents.length} of {students.length} students
-            </p>
+            <h1 className="text-3xl font-bold text-gray-900">Students Management</h1>
+            <p className="text-gray-600">{students.length} total students</p>
           </div>
-          
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
-          >
-            <Plus className="w-5 h-5" />
-            Add Student
-          </button>
-        </motion.div>
+        </div>
 
-        {/* Search & Filters */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card>
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search by name, ID, or phone..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-              
-              <select
-                value={planFilter}
-                onChange={(e) => setPlanFilter(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="all">All Plans</option>
-                <option value="2_hours">2 Hours</option>
-                <option value="4_hours">4 Hours</option>
-                <option value="unlimited">Unlimited</option>
-              </select>
-
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
-          </Card>
-        </motion.div>
-
-        {/* Loading State */}
         {loading && (
           <Card>
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
-              <span className="ml-3 text-gray-600">Loading students...</span>
+              <span className="ml-3">Loading...</span>
             </div>
           </Card>
         )}
 
-        {/* Error State */}
         {error && (
           <Card>
-            <div className="flex items-center gap-3 text-red-600">
-              <AlertCircle className="w-5 h-5" />
-              <span>{error}</span>
-            </div>
+            <div className="text-red-600">{error}</div>
           </Card>
         )}
 
-        {/* Empty State */}
-        {!loading && !error && filteredStudents.length === 0 && (
+        {!loading && students.length === 0 && (
           <Card>
             <div className="text-center py-12">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {students.length === 0 ? 'No students yet' : 'No students found'}
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {students.length === 0 
-                  ? 'Get started by adding your first student'
-                  : 'Try adjusting your search or filters'
-                }
-              </p>
-              {students.length === 0 && (
-                <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="px-6 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
-                >
-                  Add First Student
-                </button>
-              )}
+              <p className="text-gray-600">No students found</p>
             </div>
           </Card>
         )}
 
-        {/* Students Table */}
-        {!loading && !error && filteredStudents.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card noPadding>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Student ID</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Name</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Contact</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Plan</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Fee</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredStudents.map((student, index) => {
-                      const plan = getPlanDetails(student.study_plan);
-                      return (
-                        <motion.tr
-                          key={student.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          className="hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="px-6 py-4 text-sm font-medium text-purple-600">
-                            {student.student_id}
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="font-semibold text-gray-900">{student.name}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <Phone className="w-4 h-4" />
-                                {student.phone}
-                              </div>
-                              {student.email && (
-                                <div className="flex items-center gap-2 text-sm text-gray-600">
-                                  <Mail className="w-4 h-4" />
-                                  {student.email}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            {plan?.label || student.study_plan}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                            ₹{student.monthly_fee}
-                          </td>
-                          <td className="px-6 py-4">
-                            <Badge variant={student.is_active ? 'success' : 'danger'}>
-                              {student.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <button
-                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                title="Edit"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(student.id, student.name)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </motion.div>
+        {!loading && students.length > 0 && (
+          <Card>
+            <div className="space-y-4">
+              {students.map(student => (
+                <div key={student.id} className="p-4 border border-gray-200 rounded-lg">
+                  <p className="font-bold">{student.name}</p>
+                  <p className="text-sm text-gray-600">{student.student_id}</p>
+                  <p className="text-sm">{student.phone}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
         )}
 
       </div>
-
-      {/* Add Student Modal */}
-      <AddStudentModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onSubmit={createStudent}
-      />
     </MainLayout>
   );
 }

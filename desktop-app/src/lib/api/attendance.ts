@@ -1,54 +1,47 @@
-/**
- * Attendance API calls
- */
-
 import apiClient from './client';
 import type { 
-  Attendance, 
-  MarkEntryRequest, 
+  Attendance,
+  MarkEntryRequest,
   MarkExitRequest,
   TodayAttendance,
-  AttendanceStats 
+  AttendanceStats,
+  ApiResponse
 } from '@/types';
 
 export const attendanceApi = {
-  /**
-   * Mark student entry (check-in)
-   */
-  markEntry: async (data: MarkEntryRequest): Promise<Attendance> => {
-    const response = await apiClient.post<{ attendance: Attendance }>('/attendance/entry', data);
-    return response.data.attendance;
+  async markEntry(data: MarkEntryRequest): Promise<Attendance> {
+    const response = await apiClient.post<ApiResponse<Attendance>>('/attendance/entry', data);
+    if (!response.data.data) {
+      throw new Error('Failed to mark entry');
+    }
+    return response.data.data;
   },
 
-  /**
-   * Mark student exit (check-out)
-   */
-  markExit: async (data: MarkExitRequest): Promise<Attendance> => {
-    const response = await apiClient.post<{ attendance: Attendance }>('/attendance/exit', data);
-    return response.data.attendance;
+  async markExit(data: MarkExitRequest): Promise<Attendance> {
+    const response = await apiClient.post<ApiResponse<Attendance>>('/attendance/exit', data);
+    if (!response.data.data) {
+      throw new Error('Failed to mark exit');
+    }
+    return response.data.data;
   },
 
-  /**
-   * Get today's attendance (who's inside now)
-   */
-  getToday: async (): Promise<TodayAttendance[]> => {
-    const response = await apiClient.get<{ attendance: TodayAttendance[] }>('/attendance/today');
-    return response.data.attendance;
+  async getToday(): Promise<TodayAttendance[]> {
+    const response = await apiClient.get<ApiResponse<TodayAttendance[]>>('/attendance/today');
+    return response.data.data || [];
   },
 
-  /**
-   * Get student attendance history
-   */
-  getStudentHistory: async (studentId: number): Promise<Attendance[]> => {
-    const response = await apiClient.get<{ attendance: Attendance[] }>(`/attendance/student/${studentId}`);
-    return response.data.attendance;
+  async getStudentHistory(studentId: number, startDate?: string, endDate?: string): Promise<Attendance[]> {
+    const response = await apiClient.get<ApiResponse<Attendance[]>>(`/attendance/student/${studentId}`, {
+      params: { start_date: startDate, end_date: endDate }
+    });
+    return response.data.data || [];
   },
 
-  /**
-   * Get student attendance statistics
-   */
-  getStudentStats: async (studentId: number): Promise<AttendanceStats> => {
-    const response = await apiClient.get<AttendanceStats>(`/attendance/student/${studentId}/stats`);
-    return response.data;
+  async getStudentStats(studentId: number): Promise<AttendanceStats> {
+    const response = await apiClient.get<ApiResponse<AttendanceStats>>(`/attendance/student/${studentId}/stats`);
+    if (!response.data.data) {
+      throw new Error('Failed to get stats');
+    }
+    return response.data.data;
   },
 };

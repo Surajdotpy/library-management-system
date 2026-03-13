@@ -1,60 +1,51 @@
-/**
- * Students API calls
- */
-
 import apiClient from './client';
 import type { 
   Student, 
   CreateStudentRequest, 
   UpdateStudentRequest,
-  StudentWithDetails 
+  StudentWithDetails,
+  ApiResponse
 } from '@/types';
 
 export const studentsApi = {
-  /**
-   * Get all students
-   */
-  getAll: async (): Promise<Student[]> => {
-    const response = await apiClient.get<{ students: Student[] }>('/students');
-    return response.data.students;
+  async getAll(): Promise<Student[]> {
+    const response = await apiClient.get<ApiResponse<Student[]>>('/students');
+    return response.data.data || [];
   },
 
-  /**
-   * Get student by ID
-   */
-  getById: async (id: number): Promise<Student> => {
-    const response = await apiClient.get<{ student: Student }>(`/students/${id}`);
-    return response.data.student;
+  async getById(id: number): Promise<Student> {
+    const response = await apiClient.get<ApiResponse<Student>>(`/students/${id}`);
+    if (!response.data.data) {
+      throw new Error('Student not found');
+    }
+    return response.data.data;
   },
 
-  /**
-   * Create new student
-   */
-  create: async (data: CreateStudentRequest): Promise<Student> => {
-    const response = await apiClient.post<{ student: Student }>('/students', data);
-    return response.data.student;
+  async create(data: CreateStudentRequest): Promise<Student> {
+    const response = await apiClient.post<ApiResponse<Student>>('/students', data);
+    if (!response.data.data) {
+      throw new Error('Failed to create student');
+    }
+    return response.data.data;
   },
 
-  /**
-   * Update student
-   */
-  update: async (id: number, data: UpdateStudentRequest): Promise<Student> => {
-    const response = await apiClient.put<{ student: Student }>(`/students/${id}`, data);
-    return response.data.student;
+  async update(id: number, data: UpdateStudentRequest): Promise<Student> {
+    const response = await apiClient.put<ApiResponse<Student>>(`/students/${id}`, data);
+    if (!response.data.data) {
+      throw new Error('Failed to update student');
+    }
+    return response.data.data;
   },
 
-  /**
-   * Delete student
-   */
-  delete: async (id: number): Promise<void> => {
+  async delete(id: number): Promise<void> {
     await apiClient.delete(`/students/${id}`);
   },
 
-  /**
-   * Get student with full details (payments, attendance)
-   */
-  getWithDetails: async (id: number): Promise<StudentWithDetails> => {
-    const response = await apiClient.get<{ student: StudentWithDetails }>(`/students/${id}/details`);
-    return response.data.student;
+  async getWithDetails(id: number): Promise<StudentWithDetails> {
+    const response = await apiClient.get<ApiResponse<StudentWithDetails>>(`/students/${id}/details`);
+    if (!response.data.data) {
+      throw new Error('Student details not found');
+    }
+    return response.data.data;
   },
 };

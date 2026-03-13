@@ -1,62 +1,54 @@
-/**
- * Payments API calls
- */
-
 import apiClient from './client';
 import type { 
-  Payment, 
+  Payment,
   RecordPaymentRequest,
   PendingPayment,
   MonthlyRevenue,
-  PaymentReceipt 
+  PaymentReceipt,
+  ApiResponse
 } from '@/types';
 
 export const paymentsApi = {
-  /**
-   * Record new payment
-   */
-  record: async (data: RecordPaymentRequest): Promise<Payment> => {
-    const response = await apiClient.post<{ payment: Payment }>('/payments', data);
-    return response.data.payment;
+  async record(data: RecordPaymentRequest): Promise<Payment> {
+    const response = await apiClient.post<ApiResponse<Payment>>('/payments', data);
+    if (!response.data.data) {
+      throw new Error('Failed to record payment');
+    }
+    return response.data.data;
   },
 
-  /**
-   * Get all payments
-   */
-  getAll: async (): Promise<Payment[]> => {
-    const response = await apiClient.get<{ payments: Payment[] }>('/payments');
-    return response.data.payments;
+  async getAll(startDate?: string, endDate?: string): Promise<Payment[]> {
+    const response = await apiClient.get<ApiResponse<Payment[]>>('/payments', {
+      params: { start_date: startDate, end_date: endDate }
+    });
+    return response.data.data || [];
   },
 
-  /**
-   * Get student payment history
-   */
-  getStudentPayments: async (studentId: number): Promise<Payment[]> => {
-    const response = await apiClient.get<{ payments: Payment[] }>(`/payments/student/${studentId}`);
-    return response.data.payments;
+  async getStudentPayments(studentId: number): Promise<Payment[]> {
+    const response = await apiClient.get<ApiResponse<Payment[]>>(`/payments/student/${studentId}`);
+    return response.data.data || [];
   },
 
-  /**
-   * Get pending payments (who hasn't paid)
-   */
-  getPending: async (): Promise<PendingPayment[]> => {
-    const response = await apiClient.get<{ pending_payments: PendingPayment[] }>('/payments/pending');
-    return response.data.pending_payments;
+  async getPending(): Promise<PendingPayment[]> {
+    const response = await apiClient.get<ApiResponse<PendingPayment[]>>('/payments/pending');
+    return response.data.data || [];
   },
 
-  /**
-   * Get monthly revenue
-   */
-  getMonthlyRevenue: async (month: number, year: number): Promise<MonthlyRevenue> => {
-    const response = await apiClient.get<MonthlyRevenue>(`/payments/revenue/${month}/${year}`);
-    return response.data;
+  async getMonthlyRevenue(year?: number, month?: number): Promise<MonthlyRevenue> {
+    const response = await apiClient.get<ApiResponse<MonthlyRevenue>>('/payments/revenue/monthly', {
+      params: { year, month }
+    });
+    if (!response.data.data) {
+      throw new Error('Failed to get revenue data');
+    }
+    return response.data.data;
   },
 
-  /**
-   * Get payment receipt
-   */
-  getReceipt: async (receiptNumber: string): Promise<PaymentReceipt> => {
-    const response = await apiClient.get<{ receipt: PaymentReceipt }>(`/payments/receipt/${receiptNumber}`);
-    return response.data.receipt;
+  async getReceipt(paymentId: number): Promise<PaymentReceipt> {
+    const response = await apiClient.get<ApiResponse<PaymentReceipt>>(`/payments/${paymentId}/receipt`);
+    if (!response.data.data) {
+      throw new Error('Receipt not found');
+    }
+    return response.data.data;
   },
 };

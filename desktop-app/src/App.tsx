@@ -4,6 +4,7 @@ import DashboardPage from '@/pages/DashboardPage';
 import StudentsPage from '@/pages/StudentsPage';
 import AttendancePage from '@/pages/AttendancePage';
 import PaymentsPage from '@/pages/PaymentsPage';
+import TestPage from '@/pages/TestPage';
 
 function App() {
   return (
@@ -17,6 +18,9 @@ function App() {
         
         {/* Students Route */}
         <Route path="/students" element={<StudentsPage />} />
+
+        // ... in Routes:
+        <Route path="/test" element={<TestPage />} />
         
         {/* Attendance Route */}
         <Route path="/attendance" element={<AttendancePage />} />
