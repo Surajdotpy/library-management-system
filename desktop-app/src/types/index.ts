@@ -9,7 +9,7 @@ export type {
   LoginRequest,
   LoginResponse,
   AuthContextType,
-} from './auth.types';
+} from './auth.type';
 
 // Student types
 export type {
