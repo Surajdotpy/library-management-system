@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, Badge } from '@/components/ui';
-import { AddStudentModal } from '@/components/features/students/AddStudentModal';
+import { AddStudentWizard } from '@/components/features/students/AddStudentWizard';
 import { useStudents } from '@/lib/hooks/useStudents';
 import { Users, Plus, Search, Loader2, AlertCircle, Phone, Mail, Trash2, Edit, Calendar, Building2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -401,12 +401,12 @@ export default function StudentsPage() {
 
       </div>
 
-      {/* Add Student Modal */}
-      <AddStudentModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onSubmit={createStudent}
-      />
+      
+<AddStudentWizard
+  isOpen={isAddModalOpen}
+  onClose={() => setIsAddModalOpen(false)}
+  onSubmit={createStudent}
+/>
     </MainLayout>
   );
 }
