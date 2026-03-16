@@ -55,7 +55,9 @@ export async function ensureTestAdminPassword(
   });
 }
 
-export async function syncTableIdSequence(tableName: 'students' | 'fee_payments'): Promise<void> {
+export async function syncTableIdSequence(
+  tableName: 'students' | 'fee_payments' | 'seat_bookings',
+): Promise<void> {
   await pool.query(`
     SELECT setval(
       pg_get_serial_sequence('${tableName}', 'id'),
@@ -76,4 +78,98 @@ export async function deleteFeePayment(
   );
 
   await syncTableIdSequence('fee_payments');
+}
+
+export async function deleteSeatBookings(
+  studentId: number,
+  bookingMonth: number,
+  bookingYear: number,
+): Promise<void> {
+  await pool.query(
+    `
+      DELETE FROM seat_bookings
+      WHERE student_id = $1
+        AND booking_month = $2
+        AND booking_year = $3
+    `,
+    [studentId, bookingMonth, bookingYear],
+  );
+
+  await syncTableIdSequence('seat_bookings');
+}
+
+export async function ensureTestSeat(
+  branchId: number,
+  seatNumber: string,
+  section: 'general' | 'ac' | 'non_ac' | 'silent_zone' = 'general',
+): Promise<{ id: number; seat_number: string }> {
+  const result = await pool.query<{ id: number; seat_number: string }>(
+    `
+      INSERT INTO seats (
+        branch_id,
+        seat_number,
+        floor_name,
+        section,
+        status,
+        is_available,
+        assigned_to_student_id,
+        assigned_date
+      ) VALUES ($1, $2, 'Test Floor', $3, 'active', true, NULL, NULL)
+      ON CONFLICT (branch_id, seat_number) DO UPDATE
+      SET
+        floor_name = EXCLUDED.floor_name,
+        section = EXCLUDED.section,
+        status = 'active',
+        is_available = true,
+        assigned_to_student_id = NULL,
+        assigned_date = NULL
+      RETURNING id, seat_number
+    `,
+    [branchId, seatNumber, section],
+  );
+
+  const seat = result.rows[0];
+
+  if (!seat) {
+    throw new Error(`Failed to ensure test seat ${seatNumber} for branch ${branchId}`);
+  }
+
+  return seat;
+}
+
+export async function findAvailableSeat(
+  branchId: number,
+  bookingMonth: number,
+  bookingYear: number,
+  excludedSeatIds: number[] = [],
+): Promise<{ id: number; seat_number: string }> {
+  const params: Array<number | number[]> = [branchId, bookingMonth, bookingYear];
+  let query = `
+    SELECT s.id, s.seat_number
+    FROM seats s
+    LEFT JOIN seat_bookings sb
+      ON sb.seat_id = s.id
+     AND sb.booking_month = $2
+     AND sb.booking_year = $3
+     AND sb.status IN ('reserved', 'active')
+    WHERE s.branch_id = $1
+      AND s.status = 'active'
+      AND sb.id IS NULL
+  `;
+
+  if (excludedSeatIds.length > 0) {
+    params.push(excludedSeatIds);
+    query += ` AND NOT (s.id = ANY($${params.length}))`;
+  }
+
+  query += ' ORDER BY s.id LIMIT 1';
+
+  const result = await pool.query<{ id: number; seat_number: string }>(query, params);
+  const seat = result.rows[0];
+
+  if (!seat) {
+    throw new Error(`No available seat found for branch ${branchId}`);
+  }
+
+  return seat;
 }

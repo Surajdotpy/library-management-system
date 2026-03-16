@@ -6,6 +6,7 @@ import attendanceRoutes from './modules/attendance/attendance.routes.js';
 import branchRoutes from './modules/branches/branches.routes.js';
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
+import seatRoutes from './modules/seats/seats.routes.js';
 import studentRoutes from './modules/students/students.routes.js';
 import userRoutes from './modules/users/users.routes.js';
 dotenv.config();
@@ -43,6 +44,7 @@ app.get('/', (_req, res) => {
             students: '/api/students',
             attendance: '/api/attendance',
             payments: '/api/payments',
+            seats: '/api/seats',
         },
     });
 });
@@ -53,6 +55,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/seats', seatRoutes);
 app.use((req, res) => {
     res.status(404).json({
         success: false,

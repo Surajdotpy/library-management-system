@@ -41,13 +41,13 @@ describe('Users API', () => {
             name: `admin-${uniqueSuffix}`,
             email: `newadmin${uniqueSuffix}@library.com`,
             password: 'admin123',
-            branch_id: 4,
-            real_name: 'New Admin 4',
+            branch_id: 1,
+            real_name: 'New Admin 1',
             personal_phone: '9876543210',
         });
         expect(response.status).toBe(201);
         expect(response.body.success).toBe(true);
-        expect(response.body.data.branch_id).toBe(4);
+        expect(response.body.data.branch_id).toBe(1);
         expect(response.body.data.email).toContain('newadmin');
     });
     it('should forbid branch admins from managing admins', async () => {
