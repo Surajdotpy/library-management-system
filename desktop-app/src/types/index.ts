@@ -27,9 +27,9 @@ export type {
   Attendance,
   MarkEntryRequest,
   MarkExitRequest,
-  TodayAttendance,
+  TodayAttendanceStudent,
+  TodayAttendanceSummary,
   AttendanceStats,
-  AttendanceSummary,
 } from './attendance.types';
 
 // Payment types
@@ -40,7 +40,20 @@ export type {
   MonthlyRevenue,
   BranchRevenue,
   PaymentReceipt,
+  PaymentQueryOptions,
 } from './payment.types';
+
+export type {
+  DashboardBranchInfo,
+  DashboardStats,
+  DashboardRecentPayment,
+  DashboardStudentInside,
+  DashboardBranchOverview,
+  DashboardSummary,
+} from './dashboard.types';
+
+export type { Branch } from './branch.types';
+export type { AdminUser, CreateAdminRequest } from './admin.types';
 
 // Common types
 export interface ApiResponse<T> {

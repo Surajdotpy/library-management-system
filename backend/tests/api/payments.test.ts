@@ -1,11 +1,22 @@
 import request from 'supertest';
 import app from '../../src/app.js';
+import { deleteFeePayment, ensureTestAdminPassword, syncTableIdSequence } from '../helpers/test-db.js';
 
 describe('Payments API', () => {
   let authToken: string;
+  const paymentFixture = {
+    student_id: 1,
+    amount: 250,
+    fee_month: 12,
+    fee_year: 2027,
+  };
 
   // Login before all tests
   beforeAll(async () => {
+    await ensureTestAdminPassword();
+    await deleteFeePayment(paymentFixture.student_id, paymentFixture.fee_month, paymentFixture.fee_year);
+    await syncTableIdSequence('fee_payments');
+
     const loginResponse = await request(app)
       .post('/api/auth/login')
       .send({
@@ -22,10 +33,10 @@ describe('Payments API', () => {
         .post('/api/payments')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          student_id: 1,
-          amount: 250,
-          fee_month: 5,
-          fee_year: 2026,
+          student_id: paymentFixture.student_id,
+          amount: paymentFixture.amount,
+          fee_month: paymentFixture.fee_month,
+          fee_year: paymentFixture.fee_year,
           transaction_id: 'TEST-UPI-001'
         });
 
@@ -40,10 +51,10 @@ describe('Payments API', () => {
         .post('/api/payments')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          student_id: 1,
-          amount: 250,
-          fee_month: 5,
-          fee_year: 2026,
+          student_id: paymentFixture.student_id,
+          amount: paymentFixture.amount,
+          fee_month: paymentFixture.fee_month,
+          fee_year: paymentFixture.fee_year,
           transaction_id: 'TEST-UPI-002'
         });
 
@@ -56,10 +67,10 @@ describe('Payments API', () => {
         .post('/api/payments')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          student_id: 1,
+          student_id: paymentFixture.student_id,
           amount: 999,
-          fee_month: 6,
-          fee_year: 2026
+          fee_month: paymentFixture.fee_month,
+          fee_year: paymentFixture.fee_year - 1
         });
 
       expect(response.status).toBe(400);
@@ -71,7 +82,7 @@ describe('Payments API', () => {
         .post('/api/payments')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          student_id: 1
+          student_id: paymentFixture.student_id
         });
 
       expect(response.status).toBe(400);

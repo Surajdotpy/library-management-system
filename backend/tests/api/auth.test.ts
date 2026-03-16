@@ -1,8 +1,13 @@
 import request from 'supertest';
 import app from '../../src/app.js';
+import { ensureTestAdminPassword } from '../helpers/test-db.js';
 
 describe('Authentication API', () => {
   let authToken: string;
+
+  beforeAll(async () => {
+    await ensureTestAdminPassword();
+  });
 
   describe('POST /api/auth/login', () => {
     it('should login with valid credentials', async () => {

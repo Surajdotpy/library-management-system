@@ -3,7 +3,7 @@ import type {
   Attendance,
   MarkEntryRequest,
   MarkExitRequest,
-  TodayAttendance,
+  TodayAttendanceSummary,
   AttendanceStats,
   ApiResponse
 } from '@/types';
@@ -25,9 +25,12 @@ export const attendanceApi = {
     return response.data.data;
   },
 
-  async getToday(): Promise<TodayAttendance[]> {
-    const response = await apiClient.get<ApiResponse<TodayAttendance[]>>('/attendance/today');
-    return response.data.data || [];
+  async getToday(): Promise<TodayAttendanceSummary> {
+    const response = await apiClient.get<ApiResponse<TodayAttendanceSummary>>('/attendance/today');
+    if (!response.data.data) {
+      throw new Error("Failed to get today's attendance");
+    }
+    return response.data.data;
   },
 
   async getStudentHistory(studentId: number, startDate?: string, endDate?: string): Promise<Attendance[]> {

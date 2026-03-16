@@ -4,6 +4,7 @@
 
 import apiClient from './client';
 import type { LoginRequest, LoginResponse, User } from '@/types';
+import { clearStoredSession } from '@/lib/auth/session';
 
 export const authApi = {
   /**
@@ -26,7 +27,6 @@ export const authApi = {
    * Logout user (client-side only)
    */
   logout: () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearStoredSession();
   },
 };

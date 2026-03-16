@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "db:migrate": "tsx src/database/migrate.ts",
     "build": "tsc",
     "start": "node dist/server.js",
      "test": "cross-env NODE_ENV=test vitest run",

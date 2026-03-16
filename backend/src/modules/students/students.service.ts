@@ -1,106 +1,184 @@
+import type { PoolClient } from 'pg';
 import pool from '../../config/db.js';
 import type { Student, CreateStudentDTO, UpdateStudentDTO } from './students.types.js';
 
 // ========== PRICING CONFIGURATION ==========
 // Update prices here - changes automatically apply everywhere
 const PRICING = {
-  '2_hours': { fee: 250, limit: 2 },      // ₹250/month, 2 hours daily
-  '4_hours': { fee: 350, limit: 4 },      // ₹350/month, 4 hours daily
-  'unlimited': { fee: 400, limit: null }  // ₹400/month, no limit
+  '2_hours': { fee: 250, limit: 2 },
+  '4_hours': { fee: 350, limit: 4 },
+  unlimited: { fee: 400, limit: null },
 } as const;
 
+function parseStudentSequence(studentId: string | undefined): number {
+  if (!studentId) {
+    return 0;
+  }
+
+  const sequence = studentId.split('-').at(-1);
+  const parsedSequence = Number.parseInt(sequence ?? '', 10);
+
+  return Number.isNaN(parsedSequence) ? 0 : parsedSequence;
+}
+
+async function generateStudentId(
+  client: PoolClient,
+  branchId: number,
+): Promise<string> {
+  const result = await client.query<{ student_id: string }>(
+    `
+      SELECT student_id
+      FROM students
+      WHERE branch_id = $1
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [branchId],
+  );
+
+  const lastStudentId = result.rows[0]?.student_id;
+  const nextSequence = parseStudentSequence(lastStudentId) + 1;
+
+  return `LIB-B${branchId}-${String(nextSequence).padStart(3, '0')}`;
+}
+
 // Get all active students
-export async function getAllStudents(): Promise<Student[]> {
-  const query = `
-    SELECT * FROM students
+export async function getAllStudents(branchId?: number): Promise<Student[]> {
+  const values: number[] = [];
+  let query = `
+    SELECT *
+    FROM students
     WHERE is_active = true
-    ORDER BY created_at DESC
   `;
-  
-  const result = await pool.query(query);
+
+  if (branchId != null) {
+    values.push(branchId);
+    query += ` AND branch_id = $${values.length}`;
+  }
+
+  query += ' ORDER BY created_at DESC';
+
+  const result = await pool.query(query, values);
   return result.rows;
 }
 
 // Get single student by ID
-export async function getStudentById(id: number): Promise<Student | null> {
-  const query = `
-    SELECT * FROM students
+export async function getStudentById(
+  id: number,
+  branchId?: number,
+): Promise<Student | null> {
+  const values: number[] = [id];
+  let query = `
+    SELECT *
+    FROM students
     WHERE id = $1 AND is_active = true
   `;
-  
-  const result = await pool.query(query, [id]);
-  
+
+  if (branchId != null) {
+    values.push(branchId);
+    query += ` AND branch_id = $${values.length}`;
+  }
+
+  const result = await pool.query(query, values);
+
   if (result.rows.length === 0) {
     return null;
   }
-  
+
   return result.rows[0];
 }
 
 // Create new student
 export async function createStudent(data: CreateStudentDTO): Promise<Student> {
-  // Get pricing from constants - automatically matches study plan
   const pricing = PRICING[data.study_plan];
-  const monthly_fee = pricing.fee;
-  const daily_hours_limit = pricing.limit;
-  
-  const query = `
-    INSERT INTO students (
-      name, email, phone, date_of_birth, gender, blood_group,
-      address, city, state, pincode,
-      emergency_contact_name, emergency_contact_phone, emergency_contact_relation,
-      photo_url, id_proof_type, id_proof_number, id_proof_url,
-      branch_id, study_plan, monthly_fee, daily_hours_limit, notes
-    )
-    VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-      $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
-    )
-    RETURNING *;
-  `;
-  
-  const values = [
-    data.name,
-    data.email || null,
-    data.phone,
-    data.date_of_birth,
-    data.gender,
-    data.blood_group || null,
-    data.address,
-    data.city,
-    data.state,
-    data.pincode,
-    data.emergency_contact_name,
-    data.emergency_contact_phone,
-    data.emergency_contact_relation,
-    data.photo_url || null,
-    data.id_proof_type || null,
-    data.id_proof_number || null,
-    data.id_proof_url || null,
-    data.branch_id,
-    data.study_plan,
-    monthly_fee,
-    daily_hours_limit,
-    data.notes || null
-  ];
-  
-  const result = await pool.query(query, values);
-  return result.rows[0];
+  const fee = pricing.fee;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await client.query(`
+      SELECT setval(
+        pg_get_serial_sequence('students', 'id'),
+        COALESCE((SELECT MAX(id) FROM students), 0) + 1,
+        false
+      )
+    `);
+    await client.query('LOCK TABLE students IN SHARE ROW EXCLUSIVE MODE');
+
+    const studentId = await generateStudentId(client, data.branch_id);
+    const result = await client.query<Student>(
+      `INSERT INTO students (
+        student_id, name, email, phone,
+        date_of_birth, gender, blood_group,
+        address, city, state, pincode,
+        emergency_contact_name, emergency_contact_phone, emergency_contact_relation,
+        id_proof_type, id_proof_number,
+        branch_id, study_plan,
+        registration_date, membership_status, monthly_fee, is_active
+      ) VALUES (
+        $1, $2, $3, $4,
+        $5, $6, $7,
+        $8, $9, $10, $11,
+        $12, $13, $14,
+        $15, $16,
+        $17, $18,
+        CURRENT_DATE, 'active', $19, true
+      ) RETURNING *`,
+      [
+        studentId,
+        data.name,
+        data.email ?? null,
+        data.phone,
+        data.date_of_birth,
+        data.gender,
+        data.blood_group ?? null,
+        data.address,
+        data.city,
+        data.state,
+        data.pincode,
+        data.emergency_contact_name,
+        data.emergency_contact_phone,
+        data.emergency_contact_relation,
+        data.id_proof_type ?? null,
+        data.id_proof_number ?? null,
+        data.branch_id,
+        data.study_plan,
+        fee,
+      ],
+    );
+
+    const createdStudent = result.rows[0];
+
+    if (!createdStudent) {
+      throw new Error('Student record was not returned after creation');
+    }
+
+    await client.query('COMMIT');
+    return createdStudent;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // Update existing student
-export async function updateStudent(id: number, data: UpdateStudentDTO): Promise<Student | null> {
-  // If study_plan is being updated, recalculate fees from constants
-  let monthly_fee: number | undefined;
-  let daily_hours_limit: number | null | undefined;
-  
+export async function updateStudent(
+  id: number,
+  data: UpdateStudentDTO,
+  branchId?: number,
+): Promise<Student | null> {
+  let monthlyFee: number | undefined;
+  let dailyHoursLimit: number | null | undefined;
+
   if (data.study_plan) {
     const pricing = PRICING[data.study_plan];
-    monthly_fee = pricing.fee;
-    daily_hours_limit = pricing.limit;
+    monthlyFee = pricing.fee;
+    dailyHoursLimit = pricing.limit;
   }
-  
-  const query = `
+
+  let query = `
     UPDATE students
     SET
       name = COALESCE($1, name),
@@ -126,41 +204,69 @@ export async function updateStudent(id: number, data: UpdateStudentDTO): Promise
       membership_status = COALESCE($21, membership_status),
       notes = COALESCE($22, notes)
     WHERE id = $23 AND is_active = true
-    RETURNING *;
   `;
-  
+
   const values = [
-    data.name, data.email, data.phone, data.date_of_birth, data.gender,
-    data.blood_group, data.address, data.city, data.state, data.pincode,
-    data.emergency_contact_name, data.emergency_contact_phone, data.emergency_contact_relation,
-    data.photo_url, data.id_proof_type, data.id_proof_number, data.id_proof_url,
-    data.study_plan, monthly_fee, daily_hours_limit, data.membership_status, data.notes,
-    id
+    data.name,
+    data.email,
+    data.phone,
+    data.date_of_birth,
+    data.gender,
+    data.blood_group,
+    data.address,
+    data.city,
+    data.state,
+    data.pincode,
+    data.emergency_contact_name,
+    data.emergency_contact_phone,
+    data.emergency_contact_relation,
+    data.photo_url,
+    data.id_proof_type,
+    data.id_proof_number,
+    data.id_proof_url,
+    data.study_plan,
+    monthlyFee,
+    dailyHoursLimit,
+    data.membership_status,
+    data.notes,
+    id,
   ];
-  
+
+  if (branchId != null) {
+    values.push(branchId);
+    query += ` AND branch_id = $${values.length}`;
+  }
+
+  query += ' RETURNING *;';
+
   const result = await pool.query(query, values);
-  
+
   if (result.rows.length === 0) {
     return null;
   }
-  
+
   return result.rows[0];
 }
 
 // Delete student (soft delete - marks as inactive)
-export async function deleteStudent(id: number): Promise<boolean> {
-  const query = `
+export async function deleteStudent(
+  id: number,
+  branchId?: number,
+): Promise<boolean> {
+  const values: number[] = [id];
+  let query = `
     UPDATE students
     SET is_active = false, membership_status = 'inactive'
     WHERE id = $1 AND is_active = true
-    RETURNING *;
   `;
-  
-  const result = await pool.query(query, [id]);
-  
-  if (result.rows.length === 0) {
-    return false;
+
+  if (branchId != null) {
+    values.push(branchId);
+    query += ` AND branch_id = $${values.length}`;
   }
-  
-  return true;
+
+  query += ' RETURNING *;';
+
+  const result = await pool.query(query, values);
+  return result.rows.length > 0;
 }

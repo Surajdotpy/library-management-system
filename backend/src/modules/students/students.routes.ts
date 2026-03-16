@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import * as studentController from './students.controller.js';
+import {
+  authenticateToken,
+  requireRole,
+} from '../../middleware/auth.middleware.js';
 
 const router = Router();
+
+router.use(authenticateToken, requireRole('superadmin', 'admin'));
 
 // GET /api/students - Get all students
 router.get('/', studentController.getStudents);

@@ -26,7 +26,19 @@ export interface CreateStudentRequest {
   email?: string;
   branch_id: number;
   study_plan: '2_hours' | '4_hours' | 'unlimited';
-  seat_number?: number;
+  date_of_birth: string;
+  gender: 'male' | 'female' | 'other';
+  blood_group?: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  emergency_contact_relation: string;
+  id_proof_type?: string;
+  id_proof_number?: string;
+  notes?: string;
 }
 
 // Update student request

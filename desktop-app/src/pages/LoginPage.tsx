@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { authApi } from '@/lib/api';
+import { routes } from '@/config/routes';
+import { setStoredSession } from '@/lib/auth/session';
 import { Mail, Lock, Coffee, BookOpen } from 'lucide-react';
 
 export default function LoginPage() {
@@ -20,11 +22,9 @@ export default function LoginPage() {
 
     try {
       const response = await authApi.login({ email, password });
-      
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
-      
-      navigate('/dashboard');
+
+      setStoredSession(response.token, response.user);
+      navigate(routes.dashboard, { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Invalid credentials. Please try again.');
     } finally {

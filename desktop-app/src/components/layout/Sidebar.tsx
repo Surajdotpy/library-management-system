@@ -1,28 +1,33 @@
 import { motion } from 'framer-motion';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Users, 
   CheckSquare, 
   DollarSign, 
-  BarChart3,
-  Settings,
+  UserPlus,
   LogOut,
   Coffee,
   BookOpen
 } from 'lucide-react';
+import { routes } from '@/config/routes';
+import { clearStoredSession } from '@/lib/auth/session';
 
 interface SidebarProps {
   userRole: 'superadmin' | 'admin';
 }
 
 export function Sidebar({ userRole }: SidebarProps) {
+  const navigate = useNavigate();
+  const accessLabel = userRole === 'superadmin' ? 'All Branches' : 'My Branch';
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-    { icon: Users, label: 'Students', path: '/students' },
-    { icon: CheckSquare, label: 'Attendance', path: '/attendance' },
-    { icon: DollarSign, label: 'Payments', path: '/payments' },
-    ...(userRole === 'superadmin' ? [{ icon: BarChart3, label: 'Reports', path: '/reports' }] : []),
+    { icon: LayoutDashboard, label: 'Dashboard', path: routes.dashboard },
+    { icon: Users, label: 'Students', path: routes.students },
+    { icon: CheckSquare, label: 'Attendance', path: routes.attendance },
+    { icon: DollarSign, label: 'Payments', path: routes.payments },
+    ...(userRole === 'superadmin'
+      ? [{ icon: UserPlus, label: 'Admins', path: routes.admins }]
+      : []),
   ];
 
   return (
@@ -31,7 +36,6 @@ export function Sidebar({ userRole }: SidebarProps) {
       animate={{ x: 0, opacity: 1 }}
       className="w-64 bg-gradient-to-b from-purple-900 via-purple-800 to-indigo-900 text-white flex flex-col h-screen fixed left-0 top-0 shadow-2xl z-50"
     >
-      {/* Logo */}
       <div className="p-6 border-b border-purple-700/50">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -44,12 +48,11 @@ export function Sidebar({ userRole }: SidebarProps) {
           </div>
           <div>
             <h1 className="text-lg font-bold">Coffee aur Kitaab</h1>
-            <p className="text-xs text-purple-300">Study Library</p>
+            <p className="text-xs text-purple-300">{accessLabel}</p>
           </div>
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
         {menuItems.map((item) => (
           <NavLink
@@ -69,21 +72,11 @@ export function Sidebar({ userRole }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Bottom Actions */}
-      <div className="p-4 border-t border-purple-700/50 space-y-2">
-        <NavLink
-          to="/profile"
-          className="flex items-center gap-3 px-4 py-3 rounded-xl text-purple-200 hover:bg-white/5 hover:text-white transition-all"
-        >
-          <Settings className="w-5 h-5" />
-          <span className="font-medium">Settings</span>
-        </NavLink>
-        
+      <div className="p-4 border-t border-purple-700/50">
         <button
           onClick={() => {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            window.location.href = '/login';
+            clearStoredSession();
+            navigate(routes.login, { replace: true });
           }}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-300 hover:bg-red-500/10 hover:text-red-200 transition-all"
         >

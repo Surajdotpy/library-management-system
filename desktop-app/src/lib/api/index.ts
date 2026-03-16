@@ -8,3 +8,6 @@ export { authApi } from './auth';
 export { studentsApi } from './students';
 export { attendanceApi } from './attendance';
 export { paymentsApi } from './payments';
+export { dashboardApi } from './dashboard';
+export { branchesApi } from './branches';
+export { usersApi } from './users';

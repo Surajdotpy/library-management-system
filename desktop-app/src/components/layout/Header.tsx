@@ -1,31 +1,36 @@
 import { Search, Bell, User } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { getBranchName } from '@/config/branches';
 
 interface HeaderProps {
   userName: string;
-  userRole: string;
+  userRole: 'superadmin' | 'admin';
+  branchId: number | null;
 }
 
-export function Header({ userName, userRole }: HeaderProps) {
+export function Header({ userName, userRole, branchId }: HeaderProps) {
+  const roleLabel = userRole === 'superadmin' ? 'Super Admin' : 'Branch Admin';
+  const dashboardTitle = userRole === 'superadmin' ? 'Super Admin Dashboard' : 'Branch Dashboard';
+  const accessLabel =
+    userRole === 'superadmin' ? 'Access to all branches' : getBranchName(branchId);
+
   return (
     <motion.header
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between"
     >
-      {/* Welcome Message */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-800">
-          Dashboard
-        </h2>
+        <h2 className="text-2xl font-bold text-gray-800">{dashboardTitle}</h2>
         <p className="text-sm text-gray-600">
           Welcome back, <span className="font-semibold text-purple-600">{userName}</span>!
         </p>
+        <p className="mt-1 text-xs text-gray-500">
+          {roleLabel} • {accessLabel}
+        </p>
       </div>
 
-      {/* Right Side */}
       <div className="flex items-center gap-4">
-        {/* Search */}
         <div className="relative hidden md:block">
           <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -35,17 +40,15 @@ export function Header({ userName, userRole }: HeaderProps) {
           />
         </div>
 
-        {/* Notifications */}
         <button className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors">
           <Bell className="w-5 h-5 text-gray-600" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
         </button>
 
-        {/* Profile */}
         <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
           <div className="text-right">
             <p className="text-sm font-semibold text-gray-800">{userName}</p>
-            <p className="text-xs text-gray-500 capitalize">{userRole}</p>
+            <p className="text-xs text-gray-500">{roleLabel}</p>
           </div>
           <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
             <User className="w-5 h-5 text-white" />

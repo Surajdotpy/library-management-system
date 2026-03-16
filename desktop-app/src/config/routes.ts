@@ -4,6 +4,8 @@
  */
 
 export const routes = {
+  root: '/',
+
   // Auth routes
   login: '/login',
   
@@ -12,7 +14,9 @@ export const routes = {
   students: '/students',
   attendance: '/attendance',
   payments: '/payments',
+  admins: '/admins',
   reports: '/reports',
+  test: '/test',
   
   // Settings
   profile: '/profile',
@@ -29,6 +33,7 @@ export const routeLabels: Record<string, string> = {
   [routes.students]: 'Students',
   [routes.attendance]: 'Attendance',
   [routes.payments]: 'Payments',
+  [routes.admins]: 'Admins',
   [routes.reports]: 'Reports',
   [routes.profile]: 'Profile',
   [routes.settings]: 'Settings',

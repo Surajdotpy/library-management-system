@@ -1,26 +1,34 @@
 import apiClient from './client';
-import type { 
-  Payment,
-  RecordPaymentRequest,
-  PendingPayment,
+import type {
+  ApiResponse,
   MonthlyRevenue,
+  Payment,
+  PaymentQueryOptions,
   PaymentReceipt,
-  ApiResponse
+  PendingPayment,
+  RecordPaymentRequest,
 } from '@/types';
 
 export const paymentsApi = {
   async record(data: RecordPaymentRequest): Promise<Payment> {
     const response = await apiClient.post<ApiResponse<Payment>>('/payments', data);
+
     if (!response.data.data) {
       throw new Error('Failed to record payment');
     }
+
     return response.data.data;
   },
 
-  async getAll(startDate?: string, endDate?: string): Promise<Payment[]> {
+  async getAll(options: PaymentQueryOptions = {}): Promise<Payment[]> {
     const response = await apiClient.get<ApiResponse<Payment[]>>('/payments', {
-      params: { start_date: startDate, end_date: endDate }
+      params: {
+        month: options.month,
+        year: options.year,
+        limit: options.limit,
+      },
     });
+
     return response.data.data || [];
   },
 
@@ -34,21 +42,27 @@ export const paymentsApi = {
     return response.data.data || [];
   },
 
-  async getMonthlyRevenue(year?: number, month?: number): Promise<MonthlyRevenue> {
-    const response = await apiClient.get<ApiResponse<MonthlyRevenue>>('/payments/revenue/monthly', {
-      params: { year, month }
-    });
+  async getMonthlyRevenue(year: number, month: number): Promise<MonthlyRevenue> {
+    const response = await apiClient.get<ApiResponse<MonthlyRevenue>>(
+      `/payments/revenue/${month}/${year}`,
+    );
+
     if (!response.data.data) {
       throw new Error('Failed to get revenue data');
     }
+
     return response.data.data;
   },
 
-  async getReceipt(paymentId: number): Promise<PaymentReceipt> {
-    const response = await apiClient.get<ApiResponse<PaymentReceipt>>(`/payments/${paymentId}/receipt`);
+  async getReceipt(receiptNumber: string): Promise<PaymentReceipt> {
+    const response = await apiClient.get<ApiResponse<PaymentReceipt>>(
+      `/payments/receipt/${receiptNumber}`,
+    );
+
     if (!response.data.data) {
       throw new Error('Receipt not found');
     }
+
     return response.data.data;
   },
 };

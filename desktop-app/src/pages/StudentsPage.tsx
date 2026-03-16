@@ -1,201 +1,199 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  Building2,
+  Calendar,
+  Edit,
+  Loader2,
+  Mail,
+  Phone,
+  Plus,
+  Search,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import { AddStudentWizard } from '@/components/features/students/AddStudentWizard';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, Badge } from '@/components/ui';
-import { AddStudentWizard } from '@/components/features/students/AddStudentWizard';
+import { getBranchName } from '@/config/branches';
+import { getStoredUser } from '@/lib/auth/session';
 import { useStudents } from '@/lib/hooks/useStudents';
-import { Users, Plus, Search, Loader2, AlertCircle, Phone, Mail, Trash2, Edit, Calendar, Building2 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { STUDY_PLANS } from '@/types';
 
 export default function StudentsPage() {
   const { students, loading, error, createStudent, deleteStudent } = useStudents();
+  const currentUser = getStoredUser();
+  const isSuperAdmin = currentUser?.role === 'superadmin';
+  const branchScopeLabel = isSuperAdmin
+    ? 'All Branches'
+    : getBranchName(currentUser?.branch_id ?? null);
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Get current user
-  const userStr = localStorage.getItem('user');
-  const currentUser = userStr ? JSON.parse(userStr) : null;
-  const isSuperAdmin = currentUser?.role === 'superadmin';
-
-  // Filter students
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = 
-      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.student_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const filteredStudents = students.filter((student) => {
+    const normalizedQuery = searchQuery.toLowerCase();
+    const matchesSearch =
+      student.name.toLowerCase().includes(normalizedQuery) ||
+      student.student_id.toLowerCase().includes(normalizedQuery) ||
       student.phone.includes(searchQuery);
 
     const matchesPlan = planFilter === 'all' || student.study_plan === planFilter;
-    const matchesStatus = statusFilter === 'all' || 
+    const matchesStatus =
+      statusFilter === 'all' ||
       (statusFilter === 'active' && student.is_active) ||
       (statusFilter === 'inactive' && !student.is_active);
 
     return matchesSearch && matchesPlan && matchesStatus;
   });
 
-  // Get plan details
-  const getPlanDetails = (planValue: string) => {
-    return STUDY_PLANS.find(p => p.value === planValue);
-  };
+  const activeStudentsCount = students.filter((student) => student.is_active).length;
+  const inactiveStudentsCount = students.length - activeStudentsCount;
+  const monthlyRevenue = students
+    .filter((student) => student.is_active)
+    .reduce((sum, student) => sum + student.monthly_fee, 0);
 
-  // Get branch name (you'll need to add this to your student type or fetch separately)
-  const getBranchName = (branchId: number) => {
-    const branches: { [key: number]: string } = {
-      1: 'Bareilly Main',
-      2: 'Bareilly East',
-      3: 'Bareilly West',
-      4: 'Bareilly North',
-    };
-    return branches[branchId] || `Branch ${branchId}`;
-  };
+  const getPlanDetails = (planValue: string) =>
+    STUDY_PLANS.find((plan) => plan.value === planValue);
 
-  // Format date
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     });
-  };
 
-  // Handle delete with confirmation
   const handleDelete = async (id: number, name: string) => {
-    if (window.confirm(`Are you sure you want to delete ${name}?\n\nThis will permanently remove:\n• Student record\n• All attendance history\n• All payment records\n\nThis action CANNOT be undone!`)) {
-      const result = await deleteStudent(id);
-      if (!result.success) {
-        alert('Error: ' + result.error);
-      }
+    const confirmed = window.confirm(
+      `Delete ${name}?\n\nThis will remove the student record and related attendance/payment history.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const result = await deleteStudent(id);
+
+    if (!result.success) {
+      window.alert(`Error: ${result.error}`);
     }
   };
 
   return (
     <MainLayout>
       <div className="space-y-6">
-        
-        {/* Page Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+          className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
         >
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Users className="w-8 h-8 text-purple-600" />
+            <h1 className="flex items-center gap-3 text-3xl font-bold text-gray-900">
+              <Users className="h-8 w-8 text-purple-600" />
               Students Management
             </h1>
-            <p className="text-gray-600 mt-1">
-              {loading ? 'Loading...' : (
-                <>
-                  Showing {filteredStudents.length} of {students.length} students
-                  {isSuperAdmin && ' (All Branches)'}
-                </>
-              )}
+            <p className="mt-1 text-gray-600">
+              {loading
+                ? 'Loading students...'
+                : `Showing ${filteredStudents.length} of ${students.length} students | ${branchScopeLabel}`}
             </p>
           </div>
-          
+
           <button
+            type="button"
             onClick={() => setIsAddModalOpen(true)}
             disabled={loading}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-3 font-semibold text-white transition-all hover:shadow-lg disabled:opacity-50"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             Add Student
           </button>
         </motion.div>
 
+        {!loading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="grid grid-cols-1 gap-4 md:grid-cols-4"
+          >
+            <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="mb-1 text-sm font-medium text-blue-600">Total Students</p>
+                  <p className="text-3xl font-bold text-blue-900">{students.length}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500">
+                  <Users className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </Card>
 
-        {/* Quick Stats */}
-{!loading && (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.1 }}
-    className="grid grid-cols-1 md:grid-cols-4 gap-4"
-  >
-    {/* Total Students */}
-    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-blue-600 mb-1">Total Students</p>
-          <p className="text-3xl font-bold text-blue-900">{students.length}</p>
-        </div>
-        <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
-          <Users className="w-6 h-6 text-white" />
-        </div>
-      </div>
-    </Card>
+            <Card className="border-green-200 bg-gradient-to-br from-green-50 to-green-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="mb-1 text-sm font-medium text-green-600">Active Students</p>
+                  <p className="text-3xl font-bold text-green-900">{activeStudentsCount}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500">
+                  <Users className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </Card>
 
-    {/* Active Students */}
-    <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-green-600 mb-1">Active Students</p>
-          <p className="text-3xl font-bold text-green-900">
-            {students.filter(s => s.is_active).length}
-          </p>
-        </div>
-        <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center">
-          <Users className="w-6 h-6 text-white" />
-        </div>
-      </div>
-    </Card>
+            <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="mb-1 text-sm font-medium text-purple-600">Monthly Revenue</p>
+                  <p className="text-3xl font-bold text-purple-900">
+                    INR {monthlyRevenue.toLocaleString('en-IN')}
+                  </p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500">
+                  <Users className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </Card>
 
-    {/* Monthly Revenue */}
-    <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-purple-600 mb-1">Monthly Revenue</p>
-          <p className="text-3xl font-bold text-purple-900">
-            ₹{students.filter(s => s.is_active).reduce((sum, s) => sum + s.monthly_fee, 0).toLocaleString()}
-          </p>
-        </div>
-        <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center">
-          <Users className="w-6 h-6 text-white" />
-        </div>
-      </div>
-    </Card>
+            <Card className="border-red-200 bg-gradient-to-br from-red-50 to-red-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="mb-1 text-sm font-medium text-red-600">Inactive</p>
+                  <p className="text-3xl font-bold text-red-900">{inactiveStudentsCount}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-500">
+                  <Users className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
 
-    {/* Inactive Students */}
-    <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-red-600 mb-1">Inactive</p>
-          <p className="text-3xl font-bold text-red-900">
-            {students.filter(s => !s.is_active).length}
-          </p>
-        </div>
-        <div className="w-12 h-12 bg-red-500 rounded-xl flex items-center justify-center">
-          <Users className="w-6 h-6 text-white" />
-        </div>
-      </div>
-    </Card>
-  </motion.div>
-)};
-
-        {/* Search & Filters */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
           <Card>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2 relative">
-                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div className="relative md:col-span-2">
+                <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search by name, ID, or phone..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="w-full rounded-xl border border-gray-200 py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
-              
+
               <select
                 value={planFilter}
-                onChange={(e) => setPlanFilter(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                onChange={(event) => setPlanFilter(event.target.value)}
+                className="rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="all">All Plans</option>
                 <option value="2_hours">2 Hours</option>
@@ -205,8 +203,8 @@ export default function StudentsPage() {
 
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
@@ -216,21 +214,19 @@ export default function StudentsPage() {
           </Card>
         </motion.div>
 
-        {/* Loading State */}
         {loading && (
           <Card>
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
               <span className="ml-3 text-gray-600">Loading students...</span>
             </div>
           </Card>
         )}
 
-        {/* Error State */}
         {error && (
           <Card>
             <div className="flex items-center gap-3 text-red-600">
-              <AlertCircle className="w-5 h-5" />
+              <AlertCircle className="h-5 w-5" />
               <div>
                 <p className="font-semibold">Error loading students</p>
                 <p className="text-sm">{error}</p>
@@ -239,24 +235,23 @@ export default function StudentsPage() {
           </Card>
         )}
 
-        {/* Empty State */}
         {!loading && !error && filteredStudents.length === 0 && (
           <Card>
-            <div className="text-center py-12">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <div className="py-12 text-center">
+              <Users className="mx-auto mb-4 h-16 w-16 text-gray-300" />
+              <h3 className="mb-2 text-lg font-semibold text-gray-900">
                 {students.length === 0 ? 'No students yet' : 'No students found'}
               </h3>
-              <p className="text-gray-600 mb-6">
-                {students.length === 0 
-                  ? 'Get started by adding your first student to Coffee aur Kitaab'
-                  : 'Try adjusting your search or filters'
-                }
+              <p className="mb-6 text-gray-600">
+                {students.length === 0
+                  ? 'Get started by adding your first student.'
+                  : 'Try adjusting your search or filters.'}
               </p>
               {students.length === 0 && (
                 <button
+                  type="button"
                   onClick={() => setIsAddModalOpen(true)}
-                  className="px-6 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
+                  className="rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-purple-700"
                 >
                   Add First Student
                 </button>
@@ -265,7 +260,6 @@ export default function StudentsPage() {
           </Card>
         )}
 
-        {/* Students Table */}
         {!loading && !error && filteredStudents.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -275,103 +269,119 @@ export default function StudentsPage() {
             <Card noPadding>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="border-b border-gray-200 bg-gray-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Student</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                        Student
+                      </th>
                       {isSuperAdmin && (
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Branch</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                          Branch
+                        </th>
                       )}
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Contact</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Plan & Fee</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Joined</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                        Contact
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                        Plan and Fee
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                        Joined
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                        Status
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {filteredStudents.map((student, index) => {
                       const plan = getPlanDetails(student.study_plan);
+
                       return (
                         <motion.tr
                           key={student.id}
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.05 }}
-                          className="hover:bg-gray-50 transition-colors"
+                          className="transition-colors hover:bg-gray-50"
                         >
-                          {/* Student Info */}
                           <td className="px-6 py-4">
                             <div>
                               <p className="font-semibold text-gray-900">{student.name}</p>
-                              <p className="text-sm text-purple-600 font-medium">{student.student_id}</p>
+                              <p className="text-sm font-medium text-purple-600">
+                                {student.student_id}
+                              </p>
                             </div>
                           </td>
 
-                          {/* Branch (SuperAdmin only) */}
                           {isSuperAdmin && (
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-2 text-sm text-gray-700">
-                                <Building2 className="w-4 h-4 text-gray-400" />
+                                <Building2 className="h-4 w-4 text-gray-400" />
                                 {getBranchName(student.branch_id)}
                               </div>
                             </td>
                           )}
 
-                          {/* Contact */}
                           <td className="px-6 py-4">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <Phone className="w-4 h-4" />
+                                <Phone className="h-4 w-4" />
                                 {student.phone}
                               </div>
                               {student.email && (
                                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                                  <Mail className="w-4 h-4" />
-                                  <span className="truncate max-w-[200px]">{student.email}</span>
+                                  <Mail className="h-4 w-4" />
+                                  <span className="max-w-[200px] truncate">{student.email}</span>
                                 </div>
                               )}
                             </div>
                           </td>
 
-                          {/* Plan & Fee */}
                           <td className="px-6 py-4">
                             <div>
-                              <p className="font-semibold text-gray-900">{plan?.label || student.study_plan}</p>
-                              <p className="text-sm text-purple-600 font-bold">₹{student.monthly_fee}/month</p>
+                              <p className="font-semibold text-gray-900">
+                                {plan?.label || student.study_plan}
+                              </p>
+                              <p className="text-sm font-bold text-purple-600">
+                                INR {student.monthly_fee}/month
+                              </p>
                             </div>
                           </td>
 
-                          {/* Joined Date */}
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Calendar className="w-4 h-4" />
+                              <Calendar className="h-4 w-4" />
                               {formatDate(student.created_at)}
                             </div>
                           </td>
 
-                          {/* Status */}
                           <td className="px-6 py-4">
                             <Badge variant={student.is_active ? 'success' : 'danger'}>
                               {student.is_active ? 'Active' : 'Inactive'}
                             </Badge>
                           </td>
 
-                          {/* Actions */}
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
                               <button
-                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                type="button"
+                                className="rounded-lg p-2 text-purple-600 transition-colors hover:bg-purple-50"
                                 title="Edit Student"
-                                onClick={() => alert('Edit feature coming soon!')}
+                                onClick={() => window.alert('Edit feature coming soon.')}
                               >
-                                <Edit className="w-4 h-4" />
+                                <Edit className="h-4 w-4" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleDelete(student.id, student.name)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50"
                                 title="Delete Student"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           </td>
@@ -382,32 +392,36 @@ export default function StudentsPage() {
                 </table>
               </div>
 
-              {/* Table Footer with Stats */}
-              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+              <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
                 <div className="flex items-center justify-between text-sm text-gray-600">
                   <div>
-                    Showing <span className="font-semibold text-gray-900">{filteredStudents.length}</span> of{' '}
-                    <span className="font-semibold text-gray-900">{students.length}</span> students
+                    Showing <span className="font-semibold text-gray-900">{filteredStudents.length}</span>{' '}
+                    of <span className="font-semibold text-gray-900">{students.length}</span>{' '}
+                    students
                   </div>
                   <div className="flex gap-6">
-                    <span>Active: <span className="font-semibold text-green-600">{students.filter(s => s.is_active).length}</span></span>
-                    <span>Inactive: <span className="font-semibold text-red-600">{students.filter(s => !s.is_active).length}</span></span>
+                    <span>
+                      Active: <span className="font-semibold text-green-600">{activeStudentsCount}</span>
+                    </span>
+                    <span>
+                      Inactive:{' '}
+                      <span className="font-semibold text-red-600">{inactiveStudentsCount}</span>
+                    </span>
                   </div>
                 </div>
               </div>
             </Card>
           </motion.div>
         )}
-
       </div>
 
-      
-<AddStudentWizard
-  isOpen={isAddModalOpen}
-  onClose={() => setIsAddModalOpen(false)}
-  onSubmit={createStudent}
-/>
+      <AddStudentWizard
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSubmit={createStudent}
+        branchId={currentUser?.branch_id ?? null}
+        userRole={currentUser?.role ?? 'admin'}
+      />
     </MainLayout>
   );
 }
-
