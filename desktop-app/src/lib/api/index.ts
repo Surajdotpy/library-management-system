@@ -11,3 +11,4 @@ export { paymentsApi } from './payments';
 export { dashboardApi } from './dashboard';
 export { branchesApi } from './branches';
 export { usersApi } from './users';
+export { seatsApi } from './seats';

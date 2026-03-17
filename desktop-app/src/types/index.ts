@@ -54,6 +54,19 @@ export type {
 
 export type { Branch } from './branch.types';
 export type { AdminUser, CreateAdminRequest } from './admin.types';
+export type {
+  Seat,
+  SeatEligibleStudent,
+  SeatBooking,
+  SeatQueryOptions,
+  SeatBookingsQueryOptions,
+  CreateSeatBookingRequest,
+  ReleaseSeatBookingRequest,
+  SeatSection,
+  SeatLifecycleStatus,
+  SeatAvailabilityStatus,
+  SeatBookingStatus,
+} from './seat.types';
 
 // Common types
 export interface ApiResponse<T> {

@@ -1,13 +1,16 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
-import LoginPage from '@/pages/LoginPage';
-import DashboardPage from '@/pages/DashboardPage';
-import StudentsPage from '@/pages/StudentsPage';
-import AttendancePage from '@/pages/AttendancePage';
-import PaymentsPage from '@/pages/PaymentsPage';
-import AdminManagementPage from '@/pages/AdminManagementPage';
-import TestPage from '@/pages/TestPage';
 import { routes } from '@/config/routes';
 import { getStoredUser } from '@/lib/auth/session';
+
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const StudentsPage = lazy(() => import('@/pages/StudentsPage'));
+const SeatsPage = lazy(() => import('@/pages/SeatsPage'));
+const AttendancePage = lazy(() => import('@/pages/AttendancePage'));
+const PaymentsPage = lazy(() => import('@/pages/PaymentsPage'));
+const AdminManagementPage = lazy(() => import('@/pages/AdminManagementPage'));
+const TestPage = lazy(() => import('@/pages/TestPage'));
 
 function ProtectedRoute() {
   const user = getStoredUser();
@@ -48,27 +51,36 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<PublicOnlyRoute />}>
-          <Route path={routes.login} element={<LoginPage />} />
-        </Route>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center bg-gray-50 text-gray-600">
+            Loading...
+          </div>
+        }
+      >
+        <Routes>
+          <Route element={<PublicOnlyRoute />}>
+            <Route path={routes.login} element={<LoginPage />} />
+          </Route>
 
-        <Route element={<ProtectedRoute />}>
-          <Route path={routes.dashboard} element={<DashboardPage />} />
-          <Route path={routes.students} element={<StudentsPage />} />
-          <Route path={routes.attendance} element={<AttendancePage />} />
-          <Route path={routes.payments} element={<PaymentsPage />} />
-          <Route path={routes.test} element={<TestPage />} />
-          <Route path={routes.reports} element={<Navigate to={routes.dashboard} replace />} />
-        </Route>
+          <Route element={<ProtectedRoute />}>
+            <Route path={routes.dashboard} element={<DashboardPage />} />
+            <Route path={routes.students} element={<StudentsPage />} />
+            <Route path={routes.seats} element={<SeatsPage />} />
+            <Route path={routes.attendance} element={<AttendancePage />} />
+            <Route path={routes.payments} element={<PaymentsPage />} />
+            <Route path={routes.test} element={<TestPage />} />
+            <Route path={routes.reports} element={<Navigate to={routes.dashboard} replace />} />
+          </Route>
 
-        <Route element={<SuperAdminRoute />}>
-          <Route path={routes.admins} element={<AdminManagementPage />} />
-        </Route>
+          <Route element={<SuperAdminRoute />}>
+            <Route path={routes.admins} element={<AdminManagementPage />} />
+          </Route>
 
-        <Route path={routes.root} element={<Navigate to={fallbackRoute} replace />} />
-        <Route path="*" element={<Navigate to={fallbackRoute} replace />} />
-      </Routes>
+          <Route path={routes.root} element={<Navigate to={fallbackRoute} replace />} />
+          <Route path="*" element={<Navigate to={fallbackRoute} replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

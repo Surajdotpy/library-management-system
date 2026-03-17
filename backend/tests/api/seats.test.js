@@ -82,9 +82,9 @@ describe('Seats API', () => {
         await deleteSeatBookings(branchOneStudentAId, bookingMonth, bookingYear);
         await deleteSeatBookings(branchOneStudentBId, bookingMonth, bookingYear);
         await deleteSeatBookings(branchTwoStudentId, bookingMonth, bookingYear);
-        await ensureTestSeat(1, 'TEST-B1-001');
-        await ensureTestSeat(1, 'TEST-B1-002');
-        await ensureTestSeat(2, 'TEST-B2-001');
+        await ensureTestSeat(1, 'TB1-001');
+        await ensureTestSeat(1, 'TB1-002');
+        await ensureTestSeat(2, 'TB2-001');
         const branchOneSeat = await findAvailableSeat(1, bookingMonth, bookingYear);
         const branchOneSeatTwo = await findAvailableSeat(1, bookingMonth, bookingYear, [
             branchOneSeat.id,

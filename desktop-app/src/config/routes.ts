@@ -12,6 +12,7 @@ export const routes = {
   // Main routes
   dashboard: '/dashboard',
   students: '/students',
+  seats: '/seats',
   attendance: '/attendance',
   payments: '/payments',
   admins: '/admins',
@@ -31,6 +32,7 @@ export const routes = {
 export const routeLabels: Record<string, string> = {
   [routes.dashboard]: 'Dashboard',
   [routes.students]: 'Students',
+  [routes.seats]: 'Seats',
   [routes.attendance]: 'Attendance',
   [routes.payments]: 'Payments',
   [routes.admins]: 'Admins',

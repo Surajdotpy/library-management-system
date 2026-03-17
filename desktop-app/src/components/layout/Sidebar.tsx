@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Users, 
+  Armchair,
   CheckSquare, 
   DollarSign, 
   UserPlus,
@@ -23,6 +24,7 @@ export function Sidebar({ userRole }: SidebarProps) {
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: routes.dashboard },
     { icon: Users, label: 'Students', path: routes.students },
+    { icon: Armchair, label: 'Seats', path: routes.seats },
     { icon: CheckSquare, label: 'Attendance', path: routes.attendance },
     { icon: DollarSign, label: 'Payments', path: routes.payments },
     ...(userRole === 'superadmin'
