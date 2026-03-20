@@ -7,6 +7,7 @@ import {
   CheckSquare, 
   DollarSign, 
   UserPlus,
+  BarChart3,
   LogOut,
   Coffee,
   BookOpen
@@ -28,7 +29,10 @@ export function Sidebar({ userRole }: SidebarProps) {
     { icon: CheckSquare, label: 'Attendance', path: routes.attendance },
     { icon: DollarSign, label: 'Payments', path: routes.payments },
     ...(userRole === 'superadmin'
-      ? [{ icon: UserPlus, label: 'Admins', path: routes.admins }]
+      ? [
+          { icon: BarChart3, label: 'Reports', path: routes.reports },
+          { icon: UserPlus, label: 'Admins', path: routes.admins },
+        ]
       : []),
   ];
 

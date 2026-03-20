@@ -11,6 +11,7 @@ const AttendancePage = lazy(() => import('@/pages/AttendancePage'));
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage'));
 const AdminManagementPage = lazy(() => import('@/pages/AdminManagementPage'));
 const TestPage = lazy(() => import('@/pages/TestPage'));
+const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 
 function ProtectedRoute() {
   const user = getStoredUser();
@@ -70,11 +71,11 @@ function App() {
             <Route path={routes.attendance} element={<AttendancePage />} />
             <Route path={routes.payments} element={<PaymentsPage />} />
             <Route path={routes.test} element={<TestPage />} />
-            <Route path={routes.reports} element={<Navigate to={routes.dashboard} replace />} />
           </Route>
 
           <Route element={<SuperAdminRoute />}>
             <Route path={routes.admins} element={<AdminManagementPage />} />
+            <Route path={routes.reports} element={<ReportsPage />} />
           </Route>
 
           <Route path={routes.root} element={<Navigate to={fallbackRoute} replace />} />

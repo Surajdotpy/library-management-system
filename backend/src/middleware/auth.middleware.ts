@@ -78,3 +78,22 @@ export function requireRole(...allowedRoles: Array<'superadmin' | 'admin'>) {
     next();
   };
 }
+
+// Middleware to require superadmin role
+export function requireSuperAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Not authenticated'
+    });
+  }
+  
+  if (req.user.role !== 'superadmin') {
+    return res.status(403).json({
+      success: false,
+      error: 'Superadmin access required'
+    });
+  }
+  
+  next();
+}

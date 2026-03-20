@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { authenticateToken, requireSuperAdmin } from '../../middleware/auth.middleware';
-import * as reportsController from './reports.controller';
+import { authenticateToken, requireSuperAdmin } from '../../middleware/auth.middleware.js';
+import * as reportsController from './reports.controller.js';
 
 const router = Router();
 

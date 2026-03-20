@@ -1,4 +1,4 @@
-import pool from '../../config/database';
+import pool from '../../config/db.js';
 
 export async function getOverviewStats() {
   const client = await pool.connect();
@@ -10,7 +10,7 @@ export async function getOverviewStats() {
     // Total revenue this month
     const revenueResult = await client.query(
       `SELECT COALESCE(SUM(amount), 0) as total_revenue
-       FROM payments
+       FROM fee_payments
        WHERE TO_CHAR(payment_date, 'YYYY-MM') = $1
        AND status = 'completed'`,
       [currentMonth]
@@ -21,25 +21,24 @@ export async function getOverviewStats() {
       `SELECT COUNT(*) as total_students FROM students WHERE is_active = true`
     );
 
-    // Average occupancy rate
+    // Average occupancy rate (students currently inside / total capacity)
     const occupancyResult = await client.query(
       `SELECT 
-        ROUND(AVG(
+        ROUND(
           CASE 
-            WHEN b.total_capacity > 0 
-            THEN (b.currently_inside::numeric / b.total_capacity::numeric) * 100
+            WHEN SUM(b.total_capacity) > 0 
+            THEN (COUNT(DISTINCT a.student_id)::numeric / SUM(b.total_capacity)::numeric) * 100
             ELSE 0 
-          END
-        ), 2) as avg_occupancy
-       FROM (
-         SELECT 
-           branch_id,
-           COUNT(*) FILTER (WHERE entry_time IS NOT NULL AND exit_time IS NULL) as currently_inside,
-           (SELECT total_capacity FROM branches WHERE id = attendance.branch_id) as total_capacity
-         FROM attendance
-         WHERE DATE(entry_time) = CURRENT_DATE
-         GROUP BY branch_id
-       ) b`
+          END, 
+          2
+        ) as avg_occupancy
+       FROM branches b
+       LEFT JOIN students s ON s.branch_id = b.id AND s.is_active = true
+       LEFT JOIN attendance a ON a.student_id = s.id 
+         AND a.attendance_date = CURRENT_DATE 
+         AND a.entry_time IS NOT NULL 
+         AND a.exit_time IS NULL
+       WHERE b.is_active = true`
     );
 
     // Growth rate (compare this month vs last month students)
@@ -79,14 +78,14 @@ export async function getRevenueTrend(months: number = 6) {
         TO_CHAR(payment_date, 'YYYY-MM') as month,
         TO_CHAR(payment_date, 'Mon YYYY') as month_label,
         COALESCE(SUM(amount), 0) as revenue
-       FROM payments
+       FROM fee_payments
        WHERE payment_date >= CURRENT_DATE - INTERVAL '${months} months'
        AND status = 'completed'
        GROUP BY TO_CHAR(payment_date, 'YYYY-MM'), TO_CHAR(payment_date, 'Mon YYYY')
        ORDER BY month`
     );
 
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       month: row.month_label,
       revenue: parseFloat(row.revenue),
     }));
@@ -110,7 +109,7 @@ export async function getStudentGrowth(months: number = 6) {
        ORDER BY month`
     );
 
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       month: row.month_label,
       students: parseInt(row.students),
     }));
@@ -132,33 +131,32 @@ export async function getBranchComparison() {
         b.code,
         COUNT(DISTINCT s.id) as total_students,
         COUNT(DISTINCT s.id) FILTER (WHERE s.is_active = true) as active_students,
-        COALESCE(SUM(p.amount) FILTER (WHERE TO_CHAR(p.payment_date, 'YYYY-MM') = $1), 0) as monthly_revenue,
+        COALESCE(SUM(p.amount) FILTER (WHERE TO_CHAR(p.payment_date, 'YYYY-MM') = $1 AND p.status = 'completed'), 0) as monthly_revenue,
         b.total_capacity,
-        (
-          SELECT COUNT(*) 
-          FROM attendance a 
-          WHERE a.branch_id = b.id 
-          AND DATE(a.entry_time) = CURRENT_DATE 
+        COUNT(DISTINCT a.student_id) FILTER (
+          WHERE a.attendance_date = CURRENT_DATE 
+          AND a.entry_time IS NOT NULL 
           AND a.exit_time IS NULL
         ) as currently_inside
        FROM branches b
        LEFT JOIN students s ON s.branch_id = b.id
-       LEFT JOIN payments p ON p.student_id = s.id AND p.status = 'completed'
+       LEFT JOIN fee_payments p ON p.student_id = s.id
+       LEFT JOIN attendance a ON a.student_id = s.id
        WHERE b.is_active = true
        GROUP BY b.id, b.name, b.code, b.total_capacity
        ORDER BY monthly_revenue DESC`,
       [currentMonth]
     );
 
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       branch_id: row.id,
       branch_name: row.name,
       branch_code: row.code,
-      total_students: parseInt(row.total_students),
-      active_students: parseInt(row.active_students),
-      monthly_revenue: parseFloat(row.monthly_revenue),
-      total_capacity: row.total_capacity,
-      currently_inside: parseInt(row.currently_inside),
+      total_students: parseInt(row.total_students) || 0,
+      active_students: parseInt(row.active_students) || 0,
+      monthly_revenue: parseFloat(row.monthly_revenue) || 0,
+      total_capacity: row.total_capacity || 0,
+      currently_inside: parseInt(row.currently_inside) || 0,
       occupancy_rate: row.total_capacity > 0 
         ? ((parseInt(row.currently_inside) / row.total_capacity) * 100).toFixed(2)
         : '0',
@@ -174,17 +172,17 @@ export async function getAttendancePatterns(days: number = 30) {
   try {
     const result = await client.query(
       `SELECT 
-        DATE(entry_time) as date,
-        TO_CHAR(entry_time, 'DD Mon') as date_label,
-        COUNT(DISTINCT student_id) as unique_students,
-        COUNT(*) as total_entries
-       FROM attendance
-       WHERE entry_time >= CURRENT_DATE - INTERVAL '${days} days'
-       GROUP BY DATE(entry_time), TO_CHAR(entry_time, 'DD Mon')
-       ORDER BY date`
+        a.attendance_date as date,
+        TO_CHAR(a.attendance_date, 'DD Mon') as date_label,
+        COUNT(DISTINCT a.student_id) as unique_students,
+        COUNT(*) FILTER (WHERE a.entry_time IS NOT NULL) as total_entries
+       FROM attendance a
+       WHERE a.attendance_date >= CURRENT_DATE - INTERVAL '${days} days'
+       GROUP BY a.attendance_date, TO_CHAR(a.attendance_date, 'DD Mon')
+       ORDER BY a.attendance_date`
     );
 
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       date: row.date_label,
       unique_students: parseInt(row.unique_students),
       total_entries: parseInt(row.total_entries),

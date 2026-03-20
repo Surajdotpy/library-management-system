@@ -9,6 +9,7 @@ import paymentRoutes from './modules/payments/payments.routes.js';
 import seatRoutes from './modules/seats/seats.routes.js';
 import studentRoutes from './modules/students/students.routes.js';
 import userRoutes from './modules/users/users.routes.js';
+import reportsRoutes from './modules/reports/reports.routes.js';
 
 dotenv.config();
 
@@ -66,6 +67,7 @@ app.use('/api/students', studentRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/seats', seatRoutes);
+app.use('/api/reports', reportsRoutes);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json({
