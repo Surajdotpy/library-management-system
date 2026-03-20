@@ -2,6 +2,7 @@
  * Student Types
  */
 
+// Student object (from database)
 export interface Student {
   id: number;
   student_id: string;
@@ -76,6 +77,7 @@ export interface UpdateStudentRequest {
   seat_number?: number;
   is_active?: boolean;
 }
+
 // Student with additional info (for display)
 export interface StudentWithDetails extends Student {
   total_payments: number;

@@ -14,13 +14,13 @@ import {
   Users,
 } from 'lucide-react';
 import { AddStudentWizard } from '@/components/features/students/AddStudentWizard';
+import { EditStudentWizard } from '@/components/features/students/EditStudentWizard';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, Badge } from '@/components/ui';
 import { getBranchName } from '@/config/branches';
 import { getStoredUser } from '@/lib/auth/session';
 import { useStudents } from '@/lib/hooks/useStudents';
 import { STUDY_PLANS } from '@/types';
-import { EditStudentWizard } from '@/components/features/students/EditStudentWizard';
 import type { Student } from '@/types';
 
 export default function StudentsPage() {
@@ -32,8 +32,8 @@ export default function StudentsPage() {
     : getBranchName(currentUser?.branch_id ?? null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);     
-const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -70,6 +70,11 @@ const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
       year: 'numeric',
     });
 
+  const handleEdit = (student: Student) => {
+    setStudentToEdit(student);
+    setIsEditModalOpen(true);
+  };
+
   const handleDelete = async (id: number, name: string) => {
     const confirmed = window.confirm(
       `Delete ${name}?\n\nThis will remove the student record and related attendance/payment history.`,
@@ -85,11 +90,6 @@ const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
       window.alert(`Error: ${result.error}`);
     }
   };
-
-  const handleEdit = (student: Student) => {
-  setStudentToEdit(student);
-  setIsEditModalOpen(true);
-};
 
   return (
     <MainLayout>
@@ -380,7 +380,7 @@ const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
                                 type="button"
                                 className="rounded-lg p-2 text-purple-600 transition-colors hover:bg-purple-50"
                                 title="Edit Student"
-                                onClick={() => window.alert('Edit feature coming soon.')}
+                                onClick={() => handleEdit(student)}
                               >
                                 <Edit className="h-4 w-4" />
                               </button>
@@ -429,6 +429,14 @@ const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={createStudent}
         branchId={currentUser?.branch_id ?? null}
+        userRole={currentUser?.role ?? 'admin'}
+      />
+
+      <EditStudentWizard
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSubmit={updateStudent}
+        student={studentToEdit}
         userRole={currentUser?.role ?? 'admin'}
       />
     </MainLayout>
