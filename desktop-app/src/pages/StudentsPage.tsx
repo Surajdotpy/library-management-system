@@ -20,9 +20,11 @@ import { getBranchName } from '@/config/branches';
 import { getStoredUser } from '@/lib/auth/session';
 import { useStudents } from '@/lib/hooks/useStudents';
 import { STUDY_PLANS } from '@/types';
+import { EditStudentWizard } from '@/components/features/students/EditStudentWizard';
+import type { Student } from '@/types';
 
 export default function StudentsPage() {
-  const { students, loading, error, createStudent, deleteStudent } = useStudents();
+  const { students, loading, error, createStudent, updateStudent, deleteStudent } = useStudents();
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
   const branchScopeLabel = isSuperAdmin
@@ -30,6 +32,8 @@ export default function StudentsPage() {
     : getBranchName(currentUser?.branch_id ?? null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);     
+const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -81,6 +85,11 @@ export default function StudentsPage() {
       window.alert(`Error: ${result.error}`);
     }
   };
+
+  const handleEdit = (student: Student) => {
+  setStudentToEdit(student);
+  setIsEditModalOpen(true);
+};
 
   return (
     <MainLayout>
