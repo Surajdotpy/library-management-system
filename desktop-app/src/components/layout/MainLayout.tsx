@@ -22,6 +22,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       <div className="flex-1 flex flex-col ml-64 overflow-hidden">
         <Header
           userName={user.real_name || user.name}
+          userEmail={user.email}
           userRole={user.role}
           branchId={user.branch_id}
         />

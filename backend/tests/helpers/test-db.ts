@@ -1,5 +1,5 @@
-import pool from '../../src/config/db.js';
-import { hashPassword } from '../../src/modules/auth/auth.service.js';
+import pool from '../../src/config/db.ts';
+import { hashPassword } from '../../src/modules/auth/auth.service.ts';
 
 interface EnsureTestUserOptions {
   email: string;
@@ -93,6 +93,24 @@ export async function deleteSeatBookings(
         AND booking_year = $3
     `,
     [studentId, bookingMonth, bookingYear],
+  );
+
+  await syncTableIdSequence('seat_bookings');
+}
+
+export async function deleteSeatBookingsForSeat(
+  seatId: number,
+  bookingMonth: number,
+  bookingYear: number,
+): Promise<void> {
+  await pool.query(
+    `
+      DELETE FROM seat_bookings
+      WHERE seat_id = $1
+        AND booking_month = $2
+        AND booking_year = $3
+    `,
+    [seatId, bookingMonth, bookingYear],
   );
 
   await syncTableIdSequence('seat_bookings');

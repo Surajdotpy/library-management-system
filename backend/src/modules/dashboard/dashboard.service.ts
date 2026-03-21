@@ -1,13 +1,13 @@
-import pool from '../../config/db.js';
-import * as attendanceService from '../attendance/attendance.service.js';
-import * as paymentService from '../payments/payments.service.js';
+import pool from '../../config/db.ts';
+import * as attendanceService from '../attendance/attendance.service.ts';
+import * as paymentService from '../payments/payments.service.ts';
 import type {
   DashboardBranchInfo,
   DashboardBranchOverview,
   DashboardRecentPayment,
   DashboardStudentInside,
   DashboardSummary,
-} from './dashboard.types.js';
+} from './dashboard.types.ts';
 
 async function getBranchInfo(branchId: number): Promise<DashboardBranchInfo> {
   const result = await pool.query(

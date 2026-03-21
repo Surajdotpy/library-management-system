@@ -1,4 +1,4 @@
-import { runPendingMigrations } from './migration-runner.js';
+import { runPendingMigrations } from './migration-runner.ts';
 
 async function main(): Promise<void> {
   const appliedMigrations = await runPendingMigrations();

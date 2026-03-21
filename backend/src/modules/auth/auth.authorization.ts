@@ -1,4 +1,4 @@
-import type { JWTPayload } from './auth.types.js';
+import type { JWTPayload } from './auth.types.ts';
 
 export class AuthorizationError extends Error {
   constructor(

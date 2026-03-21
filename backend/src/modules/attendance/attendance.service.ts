@@ -1,11 +1,11 @@
-import pool from '../../config/db.js';
+import pool from '../../config/db.ts';
 import type {
   Attendance,
   MarkEntryDTO,
   MarkExitDTO,
   AttendanceWithStudent,
   TodayAttendanceSummary,
-} from './attendance.types.js';
+} from './attendance.types.ts';
 
 async function verifyStudentAccess(
   studentId: number,

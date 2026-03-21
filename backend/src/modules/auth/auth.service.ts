@@ -1,7 +1,7 @@
-import pool from '../../config/db.js';
+import pool from '../../config/db.ts';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import type { User, JWTPayload, UserResponse } from './auth.types.js';
+import type { User, JWTPayload, UserResponse } from './auth.types.ts';
 
 function getJwtSecret(): string {
   const jwtSecret = process.env.JWT_SECRET;

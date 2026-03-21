@@ -1,13 +1,13 @@
 import request from 'supertest';
-import app from '../../src/app.js';
+import app from '../../src/app.ts';
 import {
   deleteSeatBookings,
+  deleteSeatBookingsForSeat,
   ensureTestAdminPassword,
   ensureTestSeat,
   ensureTestUser,
-  findAvailableSeat,
   syncTableIdSequence,
-} from '../helpers/test-db.js';
+} from '../helpers/test-db.ts';
 
 function buildStudentPayload(
   branchId: number,
@@ -107,15 +107,13 @@ describe('Seats API', () => {
     await deleteSeatBookings(branchOneStudentBId, bookingMonth, bookingYear);
     await deleteSeatBookings(branchTwoStudentId, bookingMonth, bookingYear);
 
-    await ensureTestSeat(1, 'TB1-001');
-    await ensureTestSeat(1, 'TB1-002');
-    await ensureTestSeat(2, 'TB2-001');
+    const branchOneSeat = await ensureTestSeat(1, 'TB1-001');
+    const branchOneSeatTwo = await ensureTestSeat(1, 'TB1-002');
+    const branchTwoSeat = await ensureTestSeat(2, 'TB2-001');
 
-    const branchOneSeat = await findAvailableSeat(1, bookingMonth, bookingYear);
-    const branchOneSeatTwo = await findAvailableSeat(1, bookingMonth, bookingYear, [
-      branchOneSeat.id,
-    ]);
-    const branchTwoSeat = await findAvailableSeat(2, bookingMonth, bookingYear);
+    await deleteSeatBookingsForSeat(branchOneSeat.id, bookingMonth, bookingYear);
+    await deleteSeatBookingsForSeat(branchOneSeatTwo.id, bookingMonth, bookingYear);
+    await deleteSeatBookingsForSeat(branchTwoSeat.id, bookingMonth, bookingYear);
 
     branchOneSeatId = branchOneSeat.id;
     branchOneSeatTwoId = branchOneSeatTwo.id;

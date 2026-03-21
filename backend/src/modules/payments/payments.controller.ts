@@ -1,12 +1,12 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js';
-import * as paymentService from './payments.service.js';
-import type { RecordPaymentDTO } from './payments.types.js';
+import type { AuthRequest } from '../auth/auth.types.ts';
+import * as paymentService from './payments.service.ts';
+import type { RecordPaymentDTO } from './payments.types.ts';
 import {
   isAuthorizationError,
   requireAuthenticatedUser,
   resolveAuthorizedBranchId,
-} from '../auth/auth.authorization.js';
+} from '../auth/auth.authorization.ts';
 
 function badRequest(res: Response, error: string) {
   return res.status(400).json({

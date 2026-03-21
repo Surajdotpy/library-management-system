@@ -1,7 +1,7 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js';
-import { requireAuthenticatedUser } from '../auth/auth.authorization.js';
-import * as branchesService from './branches.service.js';
+import type { AuthRequest } from '../auth/auth.types.ts';
+import { requireAuthenticatedUser } from '../auth/auth.authorization.ts';
+import * as branchesService from './branches.service.ts';
 
 export async function getBranches(req: AuthRequest, res: Response) {
   try {

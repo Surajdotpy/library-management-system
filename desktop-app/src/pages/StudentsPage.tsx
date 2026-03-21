@@ -9,6 +9,7 @@ import {
   Mail,
   Phone,
   Plus,
+  RotateCcw,
   Search,
   Trash2,
   Users,
@@ -24,7 +25,15 @@ import { STUDY_PLANS } from '@/types';
 import type { Student } from '@/types';
 
 export default function StudentsPage() {
-  const { students, loading, error, createStudent, updateStudent, deleteStudent } = useStudents();
+  const {
+    students,
+    loading,
+    error,
+    createStudent,
+    updateStudent,
+    deleteStudent,
+    reactivateStudent,
+  } = useStudents();
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
   const branchScopeLabel = isSuperAdmin
@@ -37,6 +46,10 @@ export default function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [feedbackMessage, setFeedbackMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const filteredStudents = students.filter((student) => {
     const normalizedQuery = searchQuery.toLowerCase();
@@ -77,7 +90,7 @@ export default function StudentsPage() {
 
   const handleDelete = async (id: number, name: string) => {
     const confirmed = window.confirm(
-      `Delete ${name}?\n\nThis will remove the student record and related attendance/payment history.`,
+      `Mark ${name} as inactive?\n\nThe student will stay in records, but attendance, seat, and payment actions will stop for this student.`,
     );
 
     if (!confirmed) {
@@ -86,9 +99,45 @@ export default function StudentsPage() {
 
     const result = await deleteStudent(id);
 
-    if (!result.success) {
-      window.alert(`Error: ${result.error}`);
+    if (result.success) {
+      setStatusFilter('all');
+      setFeedbackMessage({
+        type: 'success',
+        text: `${name} is now inactive. Their existing history is still preserved in the system.`,
+      });
+      return;
     }
+
+    setFeedbackMessage({
+      type: 'error',
+      text: result.error || 'Failed to update the student status.',
+    });
+  };
+
+  const handleReactivate = async (id: number, name: string) => {
+    const confirmed = window.confirm(
+      `Reactivate ${name}?\n\nThis will make the student active again for attendance, payments, and seat assignment.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const result = await reactivateStudent(id);
+
+    if (result.success) {
+      setStatusFilter('all');
+      setFeedbackMessage({
+        type: 'success',
+        text: `${name} is active again and is available for normal library operations.`,
+      });
+      return;
+    }
+
+    setFeedbackMessage({
+      type: 'error',
+      text: result.error || 'Failed to reactivate the student.',
+    });
   };
 
   return (
@@ -181,12 +230,61 @@ export default function StudentsPage() {
           </motion.div>
         )}
 
+        {feedbackMessage && (
+          <Card
+            className={
+              feedbackMessage.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50'
+                : 'border-red-200 bg-red-50'
+            }
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p
+                  className={
+                    feedbackMessage.type === 'success'
+                      ? 'font-semibold text-emerald-800'
+                      : 'font-semibold text-red-800'
+                  }
+                >
+                  {feedbackMessage.type === 'success'
+                    ? 'Student status updated'
+                    : 'Action failed'}
+                </p>
+                <p
+                  className={
+                    feedbackMessage.type === 'success'
+                      ? 'mt-1 text-sm text-emerald-700'
+                      : 'mt-1 text-sm text-red-700'
+                  }
+                >
+                  {feedbackMessage.text}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setFeedbackMessage(null)}
+                className="rounded-lg px-3 py-1 text-sm font-medium text-gray-600 transition-colors hover:bg-white/70 hover:text-gray-900"
+              >
+                Dismiss
+              </button>
+            </div>
+          </Card>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
           <Card>
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Deleting a student is a soft delete.
+              The record moves to <span className="font-semibold">Inactive</span> so old
+              attendance and payment history stay safe.
+            </div>
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <div className="relative md:col-span-2">
                 <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
@@ -378,20 +476,40 @@ export default function StudentsPage() {
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                className="rounded-lg p-2 text-purple-600 transition-colors hover:bg-purple-50"
-                                title="Edit Student"
+                                className="rounded-lg p-2 text-purple-600 transition-colors hover:bg-purple-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                                title={
+                                  student.is_active
+                                    ? 'Edit Student'
+                                    : 'Inactive students cannot be edited'
+                                }
                                 onClick={() => handleEdit(student)}
+                                disabled={!student.is_active}
                               >
                                 <Edit className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDelete(student.id, student.name)}
-                                className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50"
-                                title="Delete Student"
+                                className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                                title={
+                                  student.is_active
+                                    ? 'Mark Student Inactive'
+                                    : 'Student is already inactive'
+                                }
+                                disabled={!student.is_active}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
+                              {!student.is_active && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReactivate(student.id, student.name)}
+                                  className="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-50"
+                                  title="Reactivate Student"
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </motion.tr>

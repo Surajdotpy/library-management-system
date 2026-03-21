@@ -1,8 +1,8 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js';
-import { requireAuthenticatedUser } from '../auth/auth.authorization.js';
-import * as usersService from './users.service.js';
-import type { CreateAdminDTO } from './users.types.js';
+import type { AuthRequest } from '../auth/auth.types.ts';
+import { requireAuthenticatedUser } from '../auth/auth.authorization.ts';
+import * as usersService from './users.service.ts';
+import type { CreateAdminDTO } from './users.types.ts';
 
 function badRequest(res: Response, error: string) {
   return res.status(400).json({

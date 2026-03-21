@@ -1,11 +1,11 @@
-import pool from '../../config/db.js';
+import pool from '../../config/db.ts';
 import type {
   Payment,
   RecordPaymentDTO,
   PaymentWithStudent,
   PendingPayment,
   MonthlyRevenue,
-} from './payments.types.js';
+} from './payments.types.ts';
 
 // Record a new payment
 export async function recordPayment(

@@ -1,10 +1,10 @@
 import request from 'supertest';
-import app from '../../src/app.js';
+import app from '../../src/app.ts';
 import {
   ensureTestAdminPassword,
   ensureTestUser,
   syncTableIdSequence,
-} from '../helpers/test-db.js';
+} from '../helpers/test-db.ts';
 
 function buildStudentPayload(overrides: Record<string, unknown> = {}) {
   const uniqueSuffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`
@@ -148,6 +148,86 @@ describe('Students API', () => {
           (student: { branch_id: number }) => student.branch_id === 1,
         ),
       ).toBe(true);
+    });
+
+    it('should include inactive students only when requested explicitly', async () => {
+      const createResponse = await request(app)
+        .post('/api/students')
+        .set('Authorization', `Bearer ${superadminToken}`)
+        .send(buildStudentPayload());
+
+      expect(createResponse.status).toBe(201);
+
+      const studentId = createResponse.body.data.id as number;
+
+      const deleteResponse = await request(app)
+        .delete(`/api/students/${studentId}`)
+        .set('Authorization', `Bearer ${superadminToken}`);
+
+      expect(deleteResponse.status).toBe(200);
+      expect(deleteResponse.body.success).toBe(true);
+      expect(deleteResponse.body.message).toBe('Student marked as inactive successfully');
+
+      const activeOnlyResponse = await request(app)
+        .get('/api/students')
+        .set('Authorization', `Bearer ${superadminToken}`);
+
+      expect(activeOnlyResponse.status).toBe(200);
+      expect(
+        activeOnlyResponse.body.data.some(
+          (student: { id: number }) => student.id === studentId,
+        ),
+      ).toBe(false);
+
+      const includeInactiveResponse = await request(app)
+        .get('/api/students?include_inactive=true')
+        .set('Authorization', `Bearer ${superadminToken}`);
+
+      expect(includeInactiveResponse.status).toBe(200);
+
+      const deletedStudent = includeInactiveResponse.body.data.find(
+        (student: { id: number }) => student.id === studentId,
+      );
+
+      expect(deletedStudent).toBeDefined();
+      expect(deletedStudent.is_active).toBe(false);
+      expect(deletedStudent.membership_status).toBe('inactive');
+    });
+
+    it('should reactivate an inactive student', async () => {
+      const createResponse = await request(app)
+        .post('/api/students')
+        .set('Authorization', `Bearer ${superadminToken}`)
+        .send(buildStudentPayload());
+
+      expect(createResponse.status).toBe(201);
+
+      const studentId = createResponse.body.data.id as number;
+
+      const deleteResponse = await request(app)
+        .delete(`/api/students/${studentId}`)
+        .set('Authorization', `Bearer ${superadminToken}`);
+
+      expect(deleteResponse.status).toBe(200);
+
+      const reactivateResponse = await request(app)
+        .patch(`/api/students/${studentId}/reactivate`)
+        .set('Authorization', `Bearer ${superadminToken}`);
+
+      expect(reactivateResponse.status).toBe(200);
+      expect(reactivateResponse.body.success).toBe(true);
+      expect(reactivateResponse.body.message).toBe('Student reactivated successfully');
+      expect(reactivateResponse.body.data.id).toBe(studentId);
+      expect(reactivateResponse.body.data.is_active).toBe(true);
+      expect(reactivateResponse.body.data.membership_status).toBe('active');
+
+      const getStudentResponse = await request(app)
+        .get(`/api/students/${studentId}`)
+        .set('Authorization', `Bearer ${superadminToken}`);
+
+      expect(getStudentResponse.status).toBe(200);
+      expect(getStudentResponse.body.data.id).toBe(studentId);
+      expect(getStudentResponse.body.data.is_active).toBe(true);
     });
   });
 });

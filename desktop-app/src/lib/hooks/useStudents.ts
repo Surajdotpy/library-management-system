@@ -12,7 +12,7 @@ export function useStudents() {
     setLoading(true);
     setError(null);
     try {
-      const data = await studentsApi.getAll();
+      const data = await studentsApi.getAll(true);
       setStudents(data);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load students');
@@ -50,10 +50,27 @@ export function useStudents() {
   const deleteStudent = async (id: number) => {
     try {
       await studentsApi.delete(id);
-      setStudents(prev => prev.filter(s => s.id !== id));
+      setStudents(prev => prev.map(student => (
+        student.id === id
+          ? { ...student, is_active: false }
+          : student
+      )));
       return { success: true };
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to delete student';
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const reactivateStudent = async (id: number) => {
+    try {
+      const reactivatedStudent = await studentsApi.reactivate(id);
+      setStudents(prev => prev.map(student => (
+        student.id === id ? reactivatedStudent : student
+      )));
+      return { success: true, student: reactivatedStudent };
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || 'Failed to reactivate student';
       return { success: false, error: errorMessage };
     }
   };
@@ -71,5 +88,6 @@ export function useStudents() {
     createStudent,
     updateStudent,
     deleteStudent,
+    reactivateStudent,
   };
 }

@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import * as studentController from './students.controller.js';
+import * as studentController from './students.controller.ts';
 import {
   authenticateToken,
   requireRole,
-} from '../../middleware/auth.middleware.js';
+} from '../../middleware/auth.middleware.ts';
 
 const router = Router();
 
@@ -20,6 +20,9 @@ router.post('/', studentController.createStudent);
 
 // PUT /api/students/:id - Update student
 router.put('/:id', studentController.updateStudent);
+
+// PATCH /api/students/:id/reactivate - Reactivate student
+router.patch('/:id/reactivate', studentController.reactivateStudent);
 
 // DELETE /api/students/:id - Delete student
 router.delete('/:id', studentController.deleteStudent);

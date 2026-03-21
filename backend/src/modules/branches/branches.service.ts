@@ -1,6 +1,6 @@
-import pool from '../../config/db.js';
-import type { JWTPayload } from '../auth/auth.types.js';
-import type { Branch } from './branches.types.js';
+import pool from '../../config/db.ts';
+import type { JWTPayload } from '../auth/auth.types.ts';
+import type { Branch } from './branches.types.ts';
 
 export async function getAccessibleBranches(user: JWTPayload): Promise<Branch[]> {
   if (user.role === 'superadmin') {

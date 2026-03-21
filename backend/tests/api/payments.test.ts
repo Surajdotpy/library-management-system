@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../../src/app.js';
-import { deleteFeePayment, ensureTestAdminPassword, syncTableIdSequence } from '../helpers/test-db.js';
+import app from '../../src/app.ts';
+import { deleteFeePayment, ensureTestAdminPassword, syncTableIdSequence } from '../helpers/test-db.ts';
 
 describe('Payments API', () => {
   let authToken: string;

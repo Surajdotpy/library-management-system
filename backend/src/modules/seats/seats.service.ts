@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import pool from '../../config/db.js';
+import pool from '../../config/db.ts';
 import type {
   CreateSeatBookingDTO,
   ReleaseSeatBookingDTO,
@@ -9,7 +9,7 @@ import type {
   SeatEligibleStudent,
   SeatQueryFilters,
   SeatSnapshot,
-} from './seats.types.js';
+} from './seats.types.ts';
 
 type QueryExecutor = Pick<PoolClient, 'query'> | typeof pool;
 

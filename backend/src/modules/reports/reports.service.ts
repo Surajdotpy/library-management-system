@@ -1,19 +1,28 @@
-import pool from '../../config/db.js';
+import pool from '../../config/db.ts';
+
+function roundToTwoDecimals(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function calculateGrowthRate(currentCount: number, previousCount: number): number {
+  if (previousCount === 0) {
+    return currentCount === 0 ? 0 : 100;
+  }
+
+  return roundToTwoDecimals(((currentCount - previousCount) / previousCount) * 100);
+}
 
 export async function getOverviewStats() {
   const client = await pool.connect();
   
   try {
-    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-    const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 7);
-
     // Total revenue this month
     const revenueResult = await client.query(
       `SELECT COALESCE(SUM(amount), 0) as total_revenue
        FROM fee_payments
-       WHERE TO_CHAR(payment_date, 'YYYY-MM') = $1
-       AND status = 'completed'`,
-      [currentMonth]
+       WHERE payment_date >= DATE_TRUNC('month', CURRENT_DATE)
+         AND payment_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+         AND status = 'paid'`
     );
 
     // Total active students
@@ -23,46 +32,64 @@ export async function getOverviewStats() {
 
     // Average occupancy rate (students currently inside / total capacity)
     const occupancyResult = await client.query(
-      `SELECT 
-        ROUND(
-          CASE 
-            WHEN SUM(b.total_capacity) > 0 
-            THEN (COUNT(DISTINCT a.student_id)::numeric / SUM(b.total_capacity)::numeric) * 100
-            ELSE 0 
-          END, 
-          2
-        ) as avg_occupancy
-       FROM branches b
-       LEFT JOIN students s ON s.branch_id = b.id AND s.is_active = true
-       LEFT JOIN attendance a ON a.student_id = s.id 
-         AND a.attendance_date = CURRENT_DATE 
-         AND a.entry_time IS NOT NULL 
-         AND a.exit_time IS NULL
-       WHERE b.is_active = true`
+      `SELECT
+        COALESCE(capacity.total_capacity, 0) AS total_capacity,
+        COALESCE(attendance.currently_inside, 0) AS currently_inside
+       FROM (
+         SELECT COALESCE(SUM(total_capacity), 0) AS total_capacity
+         FROM branches
+         WHERE is_active = true
+       ) capacity
+       CROSS JOIN (
+         SELECT COUNT(DISTINCT a.student_id) AS currently_inside
+         FROM attendance a
+         JOIN students s ON s.id = a.student_id
+         JOIN branches b ON b.id = s.branch_id
+         WHERE a.attendance_date = CURRENT_DATE
+           AND a.entry_time IS NOT NULL
+           AND a.exit_time IS NULL
+           AND s.is_active = true
+           AND b.is_active = true
+       ) attendance`
     );
 
     // Growth rate (compare this month vs last month students)
-    const thisMonthStudents = await client.query(
-      `SELECT COUNT(*) as count FROM students 
-       WHERE TO_CHAR(created_at, 'YYYY-MM') = $1`,
-      [currentMonth]
+    const growthCountsResult = await client.query(
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE)
+             AND created_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+         ) AS current_month_count,
+         COUNT(*) FILTER (
+           WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month'
+             AND created_at < DATE_TRUNC('month', CURRENT_DATE)
+         ) AS previous_month_count
+       FROM students`
     );
 
-    const lastMonthStudents = await client.query(
-      `SELECT COUNT(*) as count FROM students 
-       WHERE TO_CHAR(created_at, 'YYYY-MM') = $1`,
-      [lastMonth]
+    const currentMonthCount = Number.parseInt(
+      growthCountsResult.rows[0]?.current_month_count ?? '0',
+      10,
     );
-
-    const thisCount = parseInt(thisMonthStudents.rows[0].count);
-    const lastCount = parseInt(lastMonthStudents.rows[0].count) || 1;
-    const growthRate = ((thisCount - lastCount) / lastCount * 100).toFixed(2);
+    const previousMonthCount = Number.parseInt(
+      growthCountsResult.rows[0]?.previous_month_count ?? '0',
+      10,
+    );
+    const totalCapacity = Number.parseInt(occupancyResult.rows[0]?.total_capacity ?? '0', 10);
+    const currentlyInside = Number.parseInt(
+      occupancyResult.rows[0]?.currently_inside ?? '0',
+      10,
+    );
+    const avgOccupancy =
+      totalCapacity > 0
+        ? roundToTwoDecimals((currentlyInside / totalCapacity) * 100)
+        : 0;
 
     return {
       total_revenue: parseFloat(revenueResult.rows[0].total_revenue),
       total_students: parseInt(studentsResult.rows[0].total_students),
-      avg_occupancy: parseFloat(occupancyResult.rows[0].avg_occupancy) || 0,
-      growth_rate: parseFloat(growthRate),
+      avg_occupancy: avgOccupancy,
+      growth_rate: calculateGrowthRate(currentMonthCount, previousMonthCount),
     };
   } finally {
     client.release();
@@ -74,15 +101,23 @@ export async function getRevenueTrend(months: number = 6) {
   
   try {
     const result = await client.query(
-      `SELECT 
-        TO_CHAR(payment_date, 'YYYY-MM') as month,
-        TO_CHAR(payment_date, 'Mon YYYY') as month_label,
-        COALESCE(SUM(amount), 0) as revenue
-       FROM fee_payments
-       WHERE payment_date >= CURRENT_DATE - INTERVAL '${months} months'
-       AND status = 'completed'
-       GROUP BY TO_CHAR(payment_date, 'YYYY-MM'), TO_CHAR(payment_date, 'Mon YYYY')
-       ORDER BY month`
+      `WITH month_series AS (
+         SELECT generate_series(
+           DATE_TRUNC('month', CURRENT_DATE) - (($1::int - 1) * INTERVAL '1 month'),
+           DATE_TRUNC('month', CURRENT_DATE),
+           INTERVAL '1 month'
+         ) AS month_start
+       )
+       SELECT
+         TO_CHAR(ms.month_start, 'Mon YYYY') AS month_label,
+         COALESCE(SUM(fp.amount), 0) AS revenue
+       FROM month_series ms
+       LEFT JOIN fee_payments fp
+         ON DATE_TRUNC('month', fp.payment_date) = ms.month_start
+        AND fp.status = 'paid'
+       GROUP BY ms.month_start
+       ORDER BY ms.month_start`,
+      [months],
     );
 
     return result.rows.map((row: any) => ({
@@ -99,14 +134,22 @@ export async function getStudentGrowth(months: number = 6) {
   
   try {
     const result = await client.query(
-      `SELECT 
-        TO_CHAR(created_at, 'YYYY-MM') as month,
-        TO_CHAR(created_at, 'Mon YYYY') as month_label,
-        COUNT(*) as students
-       FROM students
-       WHERE created_at >= CURRENT_DATE - INTERVAL '${months} months'
-       GROUP BY TO_CHAR(created_at, 'YYYY-MM'), TO_CHAR(created_at, 'Mon YYYY')
-       ORDER BY month`
+      `WITH month_series AS (
+         SELECT generate_series(
+           DATE_TRUNC('month', CURRENT_DATE) - (($1::int - 1) * INTERVAL '1 month'),
+           DATE_TRUNC('month', CURRENT_DATE),
+           INTERVAL '1 month'
+         ) AS month_start
+       )
+       SELECT
+         TO_CHAR(ms.month_start, 'Mon YYYY') AS month_label,
+         COUNT(s.id) AS students
+       FROM month_series ms
+       LEFT JOIN students s
+         ON DATE_TRUNC('month', s.created_at) = ms.month_start
+       GROUP BY ms.month_start
+       ORDER BY ms.month_start`,
+      [months],
     );
 
     return result.rows.map((row: any) => ({
@@ -122,30 +165,52 @@ export async function getBranchComparison() {
   const client = await pool.connect();
   
   try {
-    const currentMonth = new Date().toISOString().slice(0, 7);
-
     const result = await client.query(
-      `SELECT 
-        b.id,
-        b.name,
-        b.code,
-        COUNT(DISTINCT s.id) as total_students,
-        COUNT(DISTINCT s.id) FILTER (WHERE s.is_active = true) as active_students,
-        COALESCE(SUM(p.amount) FILTER (WHERE TO_CHAR(p.payment_date, 'YYYY-MM') = $1 AND p.status = 'completed'), 0) as monthly_revenue,
-        b.total_capacity,
-        COUNT(DISTINCT a.student_id) FILTER (
-          WHERE a.attendance_date = CURRENT_DATE 
-          AND a.entry_time IS NOT NULL 
-          AND a.exit_time IS NULL
-        ) as currently_inside
+      `SELECT
+         b.id,
+         b.name,
+         b.code,
+         COALESCE(student_stats.total_students, 0)::int AS total_students,
+         COALESCE(student_stats.active_students, 0)::int AS active_students,
+         COALESCE(revenue_stats.monthly_revenue, 0) AS monthly_revenue,
+         COALESCE(b.total_capacity, 0)::int AS total_capacity,
+         COALESCE(attendance_stats.currently_inside, 0)::int AS currently_inside
        FROM branches b
-       LEFT JOIN students s ON s.branch_id = b.id
-       LEFT JOIN fee_payments p ON p.student_id = s.id
-       LEFT JOIN attendance a ON a.student_id = s.id
+       LEFT JOIN (
+         SELECT
+           branch_id,
+           COUNT(*) AS total_students,
+           COUNT(*) FILTER (WHERE is_active = true) AS active_students
+         FROM students
+         GROUP BY branch_id
+       ) student_stats
+         ON student_stats.branch_id = b.id
+       LEFT JOIN (
+         SELECT
+           s.branch_id,
+           COALESCE(SUM(p.amount), 0) AS monthly_revenue
+         FROM fee_payments p
+         JOIN students s ON s.id = p.student_id
+         WHERE p.payment_date >= DATE_TRUNC('month', CURRENT_DATE)
+           AND p.payment_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+           AND p.status = 'paid'
+         GROUP BY s.branch_id
+       ) revenue_stats
+         ON revenue_stats.branch_id = b.id
+       LEFT JOIN (
+         SELECT
+           s.branch_id,
+           COUNT(DISTINCT a.student_id) AS currently_inside
+         FROM attendance a
+         JOIN students s ON s.id = a.student_id
+         WHERE a.attendance_date = CURRENT_DATE
+           AND a.entry_time IS NOT NULL
+           AND a.exit_time IS NULL
+         GROUP BY s.branch_id
+       ) attendance_stats
+         ON attendance_stats.branch_id = b.id
        WHERE b.is_active = true
-       GROUP BY b.id, b.name, b.code, b.total_capacity
-       ORDER BY monthly_revenue DESC`,
-      [currentMonth]
+       ORDER BY monthly_revenue DESC, b.name ASC`
     );
 
     return result.rows.map((row: any) => ({
@@ -177,9 +242,10 @@ export async function getAttendancePatterns(days: number = 30) {
         COUNT(DISTINCT a.student_id) as unique_students,
         COUNT(*) FILTER (WHERE a.entry_time IS NOT NULL) as total_entries
        FROM attendance a
-       WHERE a.attendance_date >= CURRENT_DATE - INTERVAL '${days} days'
+       WHERE a.attendance_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
        GROUP BY a.attendance_date, TO_CHAR(a.attendance_date, 'DD Mon')
-       ORDER BY a.attendance_date`
+       ORDER BY a.attendance_date`,
+      [days],
     );
 
     return result.rows.map((row: any) => ({

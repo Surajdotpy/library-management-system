@@ -1,17 +1,17 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js';
+import type { AuthRequest } from '../auth/auth.types.ts';
 import {
   isAuthorizationError,
   requireAuthenticatedUser,
   resolveAuthorizedBranchId,
-} from '../auth/auth.authorization.js';
-import * as seatsService from './seats.service.js';
+} from '../auth/auth.authorization.ts';
+import * as seatsService from './seats.service.ts';
 import type {
   CreateSeatBookingDTO,
   ReleaseSeatBookingDTO,
   SeatAvailabilityStatus,
   SeatSection,
-} from './seats.types.js';
+} from './seats.types.ts';
 
 const VALID_SECTIONS = new Set<SeatSection>([
   'general',

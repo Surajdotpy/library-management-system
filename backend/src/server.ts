@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
-import app from './app.js';
-import pool from './config/db.js';
+import app from './app.ts';
+import pool from './config/db.ts';
 import type { Server } from 'http';
 
 dotenv.config();

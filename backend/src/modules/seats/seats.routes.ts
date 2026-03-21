@@ -2,8 +2,8 @@ import { Router } from 'express';
 import {
   authenticateToken,
   requireRole,
-} from '../../middleware/auth.middleware.js';
-import * as seatsController from './seats.controller.js';
+} from '../../middleware/auth.middleware.ts';
+import * as seatsController from './seats.controller.ts';
 
 const router = Router();
 

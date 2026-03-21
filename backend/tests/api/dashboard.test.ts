@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../../src/app.js';
-import { ensureTestAdminPassword, ensureTestUser } from '../helpers/test-db.js';
+import app from '../../src/app.ts';
+import { ensureTestAdminPassword, ensureTestUser } from '../helpers/test-db.ts';
 
 async function loginAs(email: string): Promise<string> {
   const response = await request(app).post('/api/auth/login').send({

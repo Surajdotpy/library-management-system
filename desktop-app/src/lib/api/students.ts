@@ -8,8 +8,10 @@ import type {
 } from '@/types';
 
 export const studentsApi = {
-  async getAll(): Promise<Student[]> {
-    const response = await apiClient.get<ApiResponse<Student[]>>('/students');
+  async getAll(includeInactive: boolean = false): Promise<Student[]> {
+    const response = await apiClient.get<ApiResponse<Student[]>>('/students', {
+      params: includeInactive ? { include_inactive: true } : undefined,
+    });
     return response.data.data || [];
   },
 
@@ -39,6 +41,14 @@ export const studentsApi = {
 
   async delete(id: number): Promise<void> {
     await apiClient.delete(`/students/${id}`);
+  },
+
+  async reactivate(id: number): Promise<Student> {
+    const response = await apiClient.patch<ApiResponse<Student>>(`/students/${id}/reactivate`);
+    if (!response.data.data) {
+      throw new Error('Failed to reactivate student');
+    }
+    return response.data.data;
   },
 
   async getWithDetails(id: number): Promise<StudentWithDetails> {

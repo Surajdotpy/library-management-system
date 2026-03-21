@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import * as attendanceController from './attendance.controller.js';
-import { authenticateToken } from '../../middleware/auth.middleware.js';
+import * as attendanceController from './attendance.controller.ts';
+import { authenticateToken } from '../../middleware/auth.middleware.ts';
 
 const router = Router();
 

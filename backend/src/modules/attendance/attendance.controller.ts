@@ -1,12 +1,12 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js';
-import * as attendanceService from './attendance.service.js';
-import type { MarkEntryDTO, MarkExitDTO } from './attendance.types.js';
+import type { AuthRequest } from '../auth/auth.types.ts';
+import * as attendanceService from './attendance.service.ts';
+import type { MarkEntryDTO, MarkExitDTO } from './attendance.types.ts';
 import {
   isAuthorizationError,
   requireAuthenticatedUser,
   resolveAuthorizedBranchId,
-} from '../auth/auth.authorization.js';
+} from '../auth/auth.authorization.ts';
 
 function badRequest(res: Response, error: string) {
   return res.status(400).json({

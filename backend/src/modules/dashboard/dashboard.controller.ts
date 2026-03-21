@@ -1,11 +1,11 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js';
+import type { AuthRequest } from '../auth/auth.types.ts';
 import {
   isAuthorizationError,
   requireAuthenticatedUser,
   resolveAuthorizedBranchId,
-} from '../auth/auth.authorization.js';
-import * as dashboardService from './dashboard.service.js';
+} from '../auth/auth.authorization.ts';
+import * as dashboardService from './dashboard.service.ts';
 
 function badRequest(res: Response, error: string) {
   return res.status(400).json({

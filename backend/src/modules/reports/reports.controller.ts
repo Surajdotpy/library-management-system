@@ -1,6 +1,6 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js'
-import * as reportsService from './reports.service.js';
+import type { AuthRequest } from '../auth/auth.types.ts'
+import * as reportsService from './reports.service.ts';
 
 export async function getOverview(req: AuthRequest, res: Response) {
   try {

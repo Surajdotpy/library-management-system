@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../../src/app.js';
-import { ensureTestAdminPassword } from '../helpers/test-db.js';
+import app from '../../src/app.ts';
+import { ensureTestAdminPassword } from '../helpers/test-db.ts';
 
 describe('Authentication API', () => {
   let authToken: string;

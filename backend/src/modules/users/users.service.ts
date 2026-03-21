@@ -1,6 +1,6 @@
-import pool from '../../config/db.js';
-import { hashPassword } from '../auth/auth.service.js';
-import type { AdminUser, CreateAdminDTO } from './users.types.js';
+import pool from '../../config/db.ts';
+import { hashPassword } from '../auth/auth.service.ts';
+import type { AdminUser, CreateAdminDTO } from './users.types.ts';
 
 function mapAdminRow(row: any): AdminUser {
   return {

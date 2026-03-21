@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
-import * as authService from './auth.service.js';
-import type { LoginRequest, AuthRequest } from './auth.types.js';
+import * as authService from './auth.service.ts';
+import type { LoginRequest, AuthRequest } from './auth.types.ts';
 
 // POST /api/auth/login - Admin login
 export async function login(req: Request, res: Response) {

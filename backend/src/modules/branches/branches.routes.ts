@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { authenticateToken } from '../../middleware/auth.middleware.js';
-import * as branchesController from './branches.controller.js';
+import { authenticateToken } from '../../middleware/auth.middleware.ts';
+import * as branchesController from './branches.controller.ts';
 
 const router = Router();
 

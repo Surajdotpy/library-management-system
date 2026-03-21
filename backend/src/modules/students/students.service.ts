@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
-import pool from '../../config/db.js';
-import type { Student, CreateStudentDTO, UpdateStudentDTO } from './students.types.js';
+import pool from '../../config/db.ts';
+import type { Student, CreateStudentDTO, UpdateStudentDTO } from './students.types.ts';
 
 // ========== PRICING CONFIGURATION ==========
 // Update prices here - changes automatically apply everywhere
@@ -42,14 +42,21 @@ async function generateStudentId(
   return `LIB-B${branchId}-${String(nextSequence).padStart(3, '0')}`;
 }
 
-// Get all active students
-export async function getAllStudents(branchId?: number): Promise<Student[]> {
+// Get students, optionally including inactive records
+export async function getAllStudents(
+  branchId?: number,
+  includeInactive: boolean = false,
+): Promise<Student[]> {
   const values: number[] = [];
   let query = `
     SELECT *
     FROM students
-    WHERE is_active = true
+    WHERE 1 = 1
   `;
+
+  if (!includeInactive) {
+    query += ' AND is_active = true';
+  }
 
   if (branchId != null) {
     values.push(branchId);
@@ -269,4 +276,27 @@ export async function deleteStudent(
 
   const result = await pool.query(query, values);
   return result.rows.length > 0;
+}
+
+// Reactivate student (undo soft delete)
+export async function reactivateStudent(
+  id: number,
+  branchId?: number,
+): Promise<Student | null> {
+  const values: number[] = [id];
+  let query = `
+    UPDATE students
+    SET is_active = true, membership_status = 'active'
+    WHERE id = $1 AND is_active = false
+  `;
+
+  if (branchId != null) {
+    values.push(branchId);
+    query += ` AND branch_id = $${values.length}`;
+  }
+
+  query += ' RETURNING *;';
+
+  const result = await pool.query(query, values);
+  return result.rows[0] ?? null;
 }

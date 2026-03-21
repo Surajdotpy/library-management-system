@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from 'express';
-import { verifyToken } from '../modules/auth/auth.service.js';
-import type { AuthRequest } from '../modules/auth/auth.types.js';
+import { verifyToken } from '../modules/auth/auth.service.ts';
+import type { AuthRequest } from '../modules/auth/auth.types.ts';
 
 // Middleware to verify JWT token and authenticate user
 export async function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) {

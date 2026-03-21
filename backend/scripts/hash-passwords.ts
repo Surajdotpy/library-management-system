@@ -1,5 +1,5 @@
-import pool from '../src/config/db.js';
-import { hashPassword } from '../src/modules/auth/auth.service.js';
+import pool from '../src/config/db.ts';
+import { hashPassword } from '../src/modules/auth/auth.service.ts';
 
 async function hashAllPasswords() {
   try {

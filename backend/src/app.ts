@@ -1,15 +1,15 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import authRoutes from './modules/auth/auth.routes.js';
-import attendanceRoutes from './modules/attendance/attendance.routes.js';
-import branchRoutes from './modules/branches/branches.routes.js';
-import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
-import paymentRoutes from './modules/payments/payments.routes.js';
-import seatRoutes from './modules/seats/seats.routes.js';
-import studentRoutes from './modules/students/students.routes.js';
-import userRoutes from './modules/users/users.routes.js';
-import reportsRoutes from './modules/reports/reports.routes.js';
+import authRoutes from './modules/auth/auth.routes.ts';
+import attendanceRoutes from './modules/attendance/attendance.routes.ts';
+import branchRoutes from './modules/branches/branches.routes.ts';
+import dashboardRoutes from './modules/dashboard/dashboard.routes.ts';
+import paymentRoutes from './modules/payments/payments.routes.ts';
+import seatRoutes from './modules/seats/seats.routes.ts';
+import studentRoutes from './modules/students/students.routes.ts';
+import userRoutes from './modules/users/users.routes.ts';
+import reportsRoutes from './modules/reports/reports.routes.ts';
 
 dotenv.config();
 

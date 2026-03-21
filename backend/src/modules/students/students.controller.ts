@@ -1,12 +1,12 @@
 import type { Response } from 'express';
-import type { AuthRequest } from '../auth/auth.types.js';
-import type { CreateStudentDTO } from './students.types.js';
-import * as studentService from './students.service.js';
+import type { AuthRequest } from '../auth/auth.types.ts';
+import type { CreateStudentDTO } from './students.types.ts';
+import * as studentService from './students.service.ts';
 import {
   isAuthorizationError,
   requireAuthenticatedUser,
   resolveAuthorizedBranchId,
-} from '../auth/auth.authorization.js';
+} from '../auth/auth.authorization.ts';
 
 const VALID_STUDY_PLANS = new Set(['2_hours', '4_hours', 'unlimited']);
 const VALID_GENDERS = new Set(['male', 'female', 'other']);
@@ -28,18 +28,47 @@ function parseBranchId(value: unknown): number | undefined {
   return Number.isNaN(parsedValue) ? Number.NaN : parsedValue;
 }
 
+function parseIncludeInactive(value: unknown): boolean | undefined {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (normalizedValue === 'true' || normalizedValue === '1') {
+    return true;
+  }
+
+  if (normalizedValue === 'false' || normalizedValue === '0') {
+    return false;
+  }
+
+  return undefined;
+}
+
 // GET /api/students - Get all students
 export async function getStudents(req: AuthRequest, res: Response) {
   try {
     const user = requireAuthenticatedUser(req.user);
     const requestedBranchId = parseBranchId(req.query.branch_id);
+    const includeInactive = parseIncludeInactive(req.query.include_inactive);
 
     if (Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
 
+    if (
+      req.query.include_inactive != null &&
+      includeInactive == null
+    ) {
+      return badRequest(res, 'Invalid include_inactive value');
+    }
+
     const branchId = resolveAuthorizedBranchId(user, requestedBranchId);
-    const students = await studentService.getAllStudents(branchId);
+    const students = await studentService.getAllStudents(
+      branchId,
+      includeInactive ?? false,
+    );
 
     res.status(200).json({
       success: true,
@@ -328,7 +357,7 @@ export async function deleteStudent(req: AuthRequest, res: Response) {
 
     res.status(200).json({
       success: true,
-      message: 'Student deleted successfully',
+      message: 'Student marked as inactive successfully',
     });
   } catch (error) {
     if (isAuthorizationError(error)) {
@@ -342,6 +371,47 @@ export async function deleteStudent(req: AuthRequest, res: Response) {
     res.status(500).json({
       success: false,
       error: 'Failed to delete student',
+    });
+  }
+}
+
+// PATCH /api/students/:id/reactivate - Reactivate student
+export async function reactivateStudent(req: AuthRequest, res: Response) {
+  try {
+    const id = Number.parseInt(req.params.id as string, 10);
+
+    if (Number.isNaN(id)) {
+      return badRequest(res, 'Invalid student ID');
+    }
+
+    const user = requireAuthenticatedUser(req.user);
+    const branchId = resolveAuthorizedBranchId(user);
+    const student = await studentService.reactivateStudent(id, branchId);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: 'Student not found or already active',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Student reactivated successfully',
+      data: student,
+    });
+  } catch (error) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    console.error('Reactivate student error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reactivate student',
     });
   }
 }
