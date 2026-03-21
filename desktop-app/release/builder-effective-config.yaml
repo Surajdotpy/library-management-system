@@ -1,0 +1,28 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.coffeeaurkitaab.library
+productName: Coffee aur Kitaab
+copyright: Copyright © 2026 Coffee aur Kitaab
+files:
+  - filter:
+      - dist/**/*
+      - electron/**/*
+      - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: public/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Coffee aur Kitaab
+publish:
+  provider: github
+  owner: YOUR_GITHUB_USERNAME
+  repo: coffee-aur-kitaab
+electronVersion: 41.0.3
