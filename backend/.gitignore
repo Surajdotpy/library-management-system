@@ -1,119 +1,99 @@
-# Generated .gitignore file for: Node, TypeScript, React, Next.js, Express, VSCode, Windows, npm, Vite, Webpack, PostgreSQL, GitHub Actions, Docker
-# Created with FOSSA's DevOps Tools
-
-# Node
-node_modules/
-npm-debug.log
-yarn-error.log
-.env
-.DS_Store
-dist/
-.cache/
-coverage/
-
-# TypeScript
-# Add TypeScript-specific ignores here
-
-# React
-node_modules/
-build/
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Next.js
-# Add Next.js-specific ignores here
-
-# Express
-# Add Express-specific ignores here
-
-# VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# Windows
-# Add Windows-specific ignores here
-
-# npm
-# Add npm-specific ignores here
-
-# Vite
-# Add Vite-specific ignores here
-
-# Webpack
-# Add Webpack-specific ignores here
-
-# PostgreSQL
-# Add PostgreSQL-specific ignores here
-
-# GitHub Actions
-# Add GitHub Actions-specific ignores here
-
-# Docker
-docker-compose.override.yml
-Dockerfile.override
-.dockerignore
-
-# Common
-.DS_Store
-Thumbs.db
-*.log
-*.bak
-*.tmp
-*.swp
-*~
-
-# IDE and editor generated files
-.idea/
-*.sublime-*
-
-# Local environment files
-.env
-.env.local
-.env.*.local
-
-
-# ignore local planning and shared packages
-docs/
-packages/
-
-
+# ================================
 # Dependencies
+# ================================
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
 
-# Build outputs
+# ================================
+# Build Outputs
+# ================================
 dist/
 build/
+*.tsbuildinfo
 
-# Environment
+# ================================
+# TypeScript Generated Files
+# ================================
+# We write TypeScript (.ts), these are auto-generated
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+FULL.ts
+FULL.d.ts.map
+
+# ================================
+# Environment Files (SECRETS!)
+# ================================
+# Contains passwords and API keys
 .env
+.env.local
 .env.test
 .env.production
 
-# Test files
+# Keep example file for reference
+!.env.example
+
+# ================================
+# Test Files
+# ================================
+# Not needed in production
 *.test.ts
+*.test.tsx
 *.spec.ts
+*.spec.tsx
 __tests__/
 tests/
 coverage/
 
-# TypeScript compiled
-*.js
-*.js.map
-*.d.ts
-
-# Logs
-*.log
-npm-debug.log*
-
-# IDE
+# ================================
+# IDE & Editor Files
+# ================================
+# Personal settings, not shared
 .vscode/
 .idea/
+*.sublime-*
+*.suo
+*.ntvs*
+*.njsproj*
+*.sln
+*.sw?
 
-# OS
+# ================================
+# Operating System Files
+# ================================
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# ================================
+# Logs
+# ================================
+*.log
+logs/
+
+# ================================
+# Temporary Files
+# ================================
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+.cache/
+
+# ================================
+# Documentation (Local Planning)
+# ================================
+docs/
+packages/
+
+# ================================
+# Docker (if you use it later)
+# ================================
+docker-compose.override.yml
+Dockerfile.override
+.dockerignore
