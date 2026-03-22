@@ -7,6 +7,11 @@ import type {
   TodayAttendanceSummary,
 } from './attendance.types.ts';
 
+async function getTodayDateString(): Promise<string> {
+  const result = await pool.query<{ today: string }>('SELECT CURRENT_DATE::text AS today');
+  return result.rows[0]?.today ?? new Date().toISOString().slice(0, 10);
+}
+
 async function verifyStudentAccess(
   studentId: number,
   branchId?: number,
@@ -36,7 +41,7 @@ export async function markEntry(
   markedBy: number,
   branchId?: number,
 ): Promise<Attendance> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await getTodayDateString();
 
   await verifyStudentAccess(data.student_id, branchId);
 
@@ -85,7 +90,7 @@ export async function markExit(
   markedBy: number,
   branchId?: number,
 ): Promise<Attendance> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await getTodayDateString();
 
   await verifyStudentAccess(data.student_id, branchId);
 
@@ -145,34 +150,98 @@ export async function markExit(
 export async function getTodayAttendance(
   branchId?: number,
 ): Promise<TodayAttendanceSummary> {
-  const todayString = new Date().toISOString().substring(0, 10);
+  const todayString = await getTodayDateString();
   const params: Array<string | number> = [todayString];
   let query = `
+    WITH attendance_live AS (
+      SELECT
+        a.id,
+        a.student_id,
+        s.name as student_name,
+        s.student_id as student_code,
+        s.branch_id,
+        b.name as branch_name,
+        s.study_plan,
+        a.attendance_date,
+        a.entry_time,
+        a.exit_time,
+        a.duration_minutes,
+        CASE
+          WHEN a.exit_time IS NOT NULL THEN COALESCE(a.duration_minutes, 0)
+          WHEN a.entry_time IS NULL THEN 0
+          ELSE GREATEST(
+            FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - a.entry_time)) / 60),
+            0
+          )::int
+        END as current_duration_minutes,
+        CASE
+          WHEN s.study_plan = '2_hours' THEN 120
+          WHEN s.study_plan = '4_hours' THEN 240
+          ELSE NULL
+        END as allowed_minutes,
+        a.status,
+        a.notes
+      FROM attendance a
+      JOIN students s ON a.student_id = s.id
+      JOIN branches b ON s.branch_id = b.id
+      WHERE a.attendance_date = $1
+    )
     SELECT
-      a.id,
-      a.student_id,
-      s.name as student_name,
-      s.student_id as student_code,
-      a.attendance_date,
-      a.entry_time,
-      a.exit_time,
-      a.duration_minutes,
-      a.status,
-      a.notes
-    FROM attendance a
-    JOIN students s ON a.student_id = s.id
-    WHERE a.attendance_date = $1
+      id,
+      student_id,
+      student_name,
+      student_code,
+      branch_id,
+      branch_name,
+      study_plan,
+      attendance_date,
+      entry_time,
+      exit_time,
+      duration_minutes,
+      current_duration_minutes,
+      allowed_minutes,
+      CASE
+        WHEN allowed_minutes IS NULL THEN NULL
+        ELSE GREATEST(allowed_minutes - current_duration_minutes, 0)
+      END as remaining_minutes,
+      CASE
+        WHEN allowed_minutes IS NULL THEN 0
+        ELSE GREATEST(current_duration_minutes - allowed_minutes, 0)
+      END as overtime_minutes,
+      CASE
+        WHEN allowed_minutes IS NULL THEN false
+        ELSE current_duration_minutes >= allowed_minutes
+      END as is_overtime,
+      CASE
+        WHEN allowed_minutes IS NULL THEN false
+        ELSE current_duration_minutes >= GREATEST(allowed_minutes - 15, 0)
+          AND current_duration_minutes < allowed_minutes
+      END as is_near_limit,
+      status,
+      notes
+    FROM attendance_live
+    WHERE 1 = 1
   `;
 
   if (branchId != null) {
     params.push(branchId);
-    query += ` AND s.branch_id = $${params.length}`;
+    query += ` AND branch_id = $${params.length}`;
   }
 
-  query += ' ORDER BY a.entry_time DESC;';
+  query += ' ORDER BY entry_time DESC;';
 
   const result = await pool.query(query, params);
-  const allRecords: AttendanceWithStudent[] = result.rows;
+  const allRecords: AttendanceWithStudent[] = result.rows.map((row) => ({
+    ...row,
+    current_duration_minutes: Number.parseInt(String(row.current_duration_minutes), 10),
+    allowed_minutes:
+      row.allowed_minutes == null ? null : Number.parseInt(String(row.allowed_minutes), 10),
+    remaining_minutes:
+      row.remaining_minutes == null ? null : Number.parseInt(String(row.remaining_minutes), 10),
+    overtime_minutes: Number.parseInt(String(row.overtime_minutes), 10),
+    is_overtime: Boolean(row.is_overtime),
+    is_near_limit: Boolean(row.is_near_limit),
+  }));
 
   return {
     date: new Date(todayString),

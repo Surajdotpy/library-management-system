@@ -543,6 +543,7 @@ export default function SeatsPage() {
                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Seat</th>
                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Student</th>
                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Period</th>
                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Assigned</th>
                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Action</th>
                         </tr>
@@ -565,6 +566,20 @@ export default function SeatsPage() {
                               <Badge variant={badgeVariantForBooking(booking.status)}>
                                 {booking.status}
                               </Badge>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              <div className="flex items-start gap-2">
+                                <CalendarDays className="mt-0.5 h-4 w-4 text-gray-400" />
+                                <div>
+                                  <p>
+                                    {MONTHS.find((option) => option.value === booking.booking_month)?.label}{' '}
+                                    {booking.booking_year}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {formatDate(booking.start_date)} - {formatDate(booking.end_date)}
+                                  </p>
+                                </div>
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-600">
                               {formatDateTime(booking.assigned_at)}

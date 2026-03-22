@@ -162,6 +162,16 @@ export default function AttendancePage() {
     );
   }, [searchQuery, summary.students_inside]);
 
+  const nearLimitCount = useMemo(
+    () => summary.students_inside.filter((student) => student.is_near_limit).length,
+    [summary.students_inside],
+  );
+
+  const overtimeCount = useMemo(
+    () => summary.students_inside.filter((student) => student.is_overtime).length,
+    [summary.students_inside],
+  );
+
   const handleAction = async (
     nextAction: AttendanceAction,
     studentIdOverride?: number,
@@ -226,7 +236,7 @@ export default function AttendancePage() {
               Attendance Management
             </h1>
             <p className="mt-1 text-gray-600">
-              Track student check-ins and check-outs for {branchLabel}
+              Track student check-ins, check-outs, and plan-limit warnings for {branchLabel}
             </p>
           </div>
 
@@ -289,28 +299,30 @@ export default function AttendancePage() {
                 <p className="mt-1 text-sm text-green-700">Live now</p>
               </Card>
 
+              <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-100">
+                <p className="text-sm font-medium text-amber-700">Near Limit</p>
+                <p className="mt-2 text-3xl font-bold text-amber-900">
+                  {nearLimitCount}
+                </p>
+                <p className="mt-1 text-sm text-amber-700">15 minutes or less left</p>
+              </Card>
+
+              <Card className="border-rose-200 bg-gradient-to-br from-rose-50 to-pink-100">
+                <p className="text-sm font-medium text-rose-700">Over Limit</p>
+                <p className="mt-2 text-3xl font-bold text-rose-900">
+                  {overtimeCount}
+                </p>
+                <p className="mt-1 text-sm text-rose-700">Needs action now</p>
+              </Card>
+
               <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-sky-100">
                 <p className="text-sm font-medium text-blue-700">Today's Entries</p>
                 <p className="mt-2 text-3xl font-bold text-blue-900">
                   {summary.total_entries}
                 </p>
-                <p className="mt-1 text-sm text-blue-700">{todayDateLabel}</p>
-              </Card>
-
-              <Card className="border-rose-200 bg-gradient-to-br from-rose-50 to-pink-100">
-                <p className="text-sm font-medium text-rose-700">Today's Exits</p>
-                <p className="mt-2 text-3xl font-bold text-rose-900">
-                  {summary.total_exits}
+                <p className="mt-1 text-sm text-blue-700">
+                  Exits: {summary.total_exits} | {todayDateLabel}
                 </p>
-                <p className="mt-1 text-sm text-rose-700">Completed visits</p>
-              </Card>
-
-              <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-100">
-                <p className="text-sm font-medium text-purple-700">Active Students</p>
-                <p className="mt-2 text-3xl font-bold text-purple-900">
-                  {activeStudents.length}
-                </p>
-                <p className="mt-1 text-sm text-purple-700">Eligible for attendance</p>
               </Card>
             </div>
 
@@ -494,10 +506,16 @@ export default function AttendancePage() {
                               Student
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Plan
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                               Entry Time
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Duration
+                              Live Duration
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Remaining
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                               Status
@@ -525,18 +543,55 @@ export default function AttendancePage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4 text-sm text-gray-900">
+                                {student.study_plan.replace('_', ' ')}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-900">
                                 {formatDateTime(student.entry_time)}
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
                                   <Clock className="h-4 w-4 text-gray-400" />
                                   <span className="text-sm font-medium text-gray-900">
-                                    {formatDuration(student.duration_minutes)}
+                                    {formatDuration(student.current_duration_minutes)}
                                   </span>
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <Badge variant="success">Inside</Badge>
+                                <span
+                                  className={[
+                                    'text-sm font-medium',
+                                    student.allowed_minutes == null
+                                      ? 'text-gray-600'
+                                      : student.is_overtime
+                                        ? 'text-red-600'
+                                        : student.is_near_limit
+                                          ? 'text-amber-700'
+                                          : 'text-green-700',
+                                  ].join(' ')}
+                                >
+                                  {student.allowed_minutes == null
+                                    ? 'Unlimited'
+                                    : student.is_overtime
+                                      ? `Over by ${formatDuration(student.overtime_minutes)}`
+                                      : `Left ${formatDuration(student.remaining_minutes ?? 0)}`}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <Badge
+                                  variant={
+                                    student.is_overtime
+                                      ? 'danger'
+                                      : student.is_near_limit
+                                        ? 'warning'
+                                        : 'success'
+                                  }
+                                >
+                                  {student.is_overtime
+                                    ? 'Over Limit'
+                                    : student.is_near_limit
+                                      ? 'Near Limit'
+                                      : 'Inside'}
+                                </Badge>
                               </td>
                               <td className="px-6 py-4">
                                 <button

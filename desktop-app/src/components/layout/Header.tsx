@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Bell,
   ChevronDown,
+  Clock3,
+  Info,
   LayoutDashboard,
+  Loader2,
   LogOut,
   Search,
-  ShieldCheck,
   User,
   Users,
 } from 'lucide-react';
@@ -14,12 +17,38 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getBranchName } from '@/config/branches';
 import { routeLabels, routes } from '@/config/routes';
 import { clearStoredSession } from '@/lib/auth/session';
+import { dashboardApi } from '@/lib/api/dashboard';
+import type { DashboardNotification } from '@/types';
 
 interface HeaderProps {
   userName: string;
   userEmail: string;
   userRole: 'superadmin' | 'admin';
   branchId: number | null;
+}
+
+function notificationIcon(notification: DashboardNotification) {
+  if (notification.severity === 'critical') {
+    return <AlertTriangle className="h-4 w-4" />;
+  }
+
+  if (notification.type.startsWith('attendance')) {
+    return <Clock3 className="h-4 w-4" />;
+  }
+
+  return <Info className="h-4 w-4" />;
+}
+
+function severityStyles(notification: DashboardNotification) {
+  if (notification.severity === 'critical') {
+    return 'bg-red-100 text-red-700';
+  }
+
+  if (notification.severity === 'warning') {
+    return 'bg-amber-100 text-amber-700';
+  }
+
+  return 'bg-blue-100 text-blue-700';
 }
 
 export function Header({
@@ -38,25 +67,51 @@ export function Header({
     (userRole === 'superadmin' ? 'Super Admin Dashboard' : 'Branch Dashboard');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<DashboardNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const notifications = [
-    {
-      id: 'access-scope',
-      title: userRole === 'superadmin' ? 'Full branch access enabled' : 'Branch access locked',
-      description:
-        userRole === 'superadmin'
-          ? 'You can manage students, reports, and admins across every branch.'
-          : `Your actions stay limited to ${accessLabel}.`,
-    },
-    {
-      id: 'student-delete',
-      title: 'Student delete keeps history safe',
-      description:
-        'Deleting a student now marks them inactive so old attendance and payment records stay preserved.',
-    },
-  ];
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadNotifications() {
+      setNotificationsLoading(true);
+      setNotificationsError(null);
+
+      try {
+        const summary = await dashboardApi.getSummary(
+          userRole === 'superadmin' ? undefined : branchId ?? undefined,
+        );
+
+        if (!isMounted) {
+          return;
+        }
+
+        setNotifications(summary.notifications ?? []);
+      } catch (error: any) {
+        if (!isMounted) {
+          return;
+        }
+
+        setNotifications([]);
+        setNotificationsError(
+          error.response?.data?.error || error.message || 'Failed to load notifications',
+        );
+      } finally {
+        if (isMounted) {
+          setNotificationsLoading(false);
+        }
+      }
+    }
+
+    void loadNotifications();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [branchId, userRole, location.pathname]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -99,6 +154,13 @@ export function Header({
     setIsProfileMenuOpen(false);
   };
 
+  const handleNotificationNavigate = (path: string) => {
+    navigate(path);
+    setIsNotificationsOpen(false);
+  };
+
+  const unreadCount = notifications.length;
+
   return (
     <motion.header
       initial={{ y: -20, opacity: 0 }}
@@ -137,9 +199,9 @@ export function Header({
             aria-label="Open notifications"
           >
             <Bell className="h-5 w-5 text-gray-600" />
-            {notifications.length > 0 && (
+            {!notificationsLoading && unreadCount > 0 && (
               <span className="absolute right-1 top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {notifications.length}
+                {unreadCount}
               </span>
             )}
           </button>
@@ -156,36 +218,67 @@ export function Header({
                   <div>
                     <p className="text-sm font-semibold text-gray-900">Notifications</p>
                     <p className="text-xs text-gray-500">
-                      Helpful system updates for your current access
+                      Live renewal and attendance alerts for your access scope
                     </p>
                   </div>
-                  <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">
-                    {notifications.length} new
-                  </span>
+                  {!notificationsLoading && unreadCount > 0 && (
+                    <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">
+                      {unreadCount} active
+                    </span>
+                  )}
                 </div>
 
-                <div className="space-y-3">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className="rounded-2xl border border-gray-100 bg-gray-50 p-3"
-                    >
-                      <div className="mb-2 flex items-start gap-3">
-                        <div className="rounded-xl bg-purple-100 p-2 text-purple-700">
-                          <ShieldCheck className="h-4 w-4" />
+                {notificationsLoading ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                    <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+                    Loading notifications...
+                  </div>
+                ) : notificationsError ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {notificationsError}
+                  </div>
+                ) : notifications.length === 0 ? (
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                    No urgent renewals or attendance warnings right now.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {notifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        onClick={() => handleNotificationNavigate(notification.action_route)}
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left transition-colors hover:border-gray-200 hover:bg-white"
+                      >
+                        <div className="mb-2 flex items-start gap-3">
+                          <div className={`rounded-xl p-2 ${severityStyles(notification)}`}>
+                            {notificationIcon(notification)}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {notification.title}
+                              </p>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${severityStyles(notification)}`}
+                              >
+                                {notification.severity}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-sm text-gray-600">
+                              {notification.description}
+                            </p>
+                            {userRole === 'superadmin' && notification.branch_name && (
+                              <p className="mt-2 text-xs font-medium text-gray-500">
+                                {notification.branch_name}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">
-                            {notification.title}
-                          </p>
-                          <p className="mt-1 text-sm text-gray-600">
-                            {notification.description}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

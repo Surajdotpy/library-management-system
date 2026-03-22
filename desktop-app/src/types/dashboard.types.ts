@@ -15,6 +15,9 @@ export interface DashboardStats {
   today_revenue: number;
   monthly_revenue: number;
   pending_payments: number;
+  overdue_payments: number;
+  due_today: number;
+  due_soon: number;
   total_capacity: number;
   occupancy_rate: number;
 }
@@ -39,6 +42,13 @@ export interface DashboardStudentInside {
   student_code: string;
   branch_id: number;
   branch_name: string;
+  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  current_duration_minutes: number;
+  allowed_minutes: number | null;
+  remaining_minutes: number | null;
+  overtime_minutes: number;
+  is_overtime: boolean;
+  is_near_limit: boolean;
 }
 
 export interface DashboardBranchOverview {
@@ -53,11 +63,32 @@ export interface DashboardBranchOverview {
   monthly_revenue: number;
 }
 
+export interface DashboardPaymentAlerts {
+  overdue_count: number;
+  due_today_count: number;
+  due_soon_count: number;
+  overdue_amount: number;
+  due_today_amount: number;
+  due_soon_amount: number;
+}
+
+export interface DashboardNotification {
+  id: string;
+  type: 'payment_overdue' | 'payment_due_today' | 'payment_due_soon' | 'attendance_overtime' | 'attendance_near_limit';
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  branch_name?: string;
+  action_route: string;
+}
+
 export interface DashboardSummary {
   scope: 'global' | 'branch';
   generated_at: string;
   branch: DashboardBranchInfo | null;
   stats: DashboardStats;
+  payment_alerts: DashboardPaymentAlerts;
+  notifications: DashboardNotification[];
   recent_payments: DashboardRecentPayment[];
   students_inside: DashboardStudentInside[];
   branch_overview?: DashboardBranchOverview[];

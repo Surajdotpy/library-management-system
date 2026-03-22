@@ -3,6 +3,8 @@ export interface Payment {
   id: number;
   student_id: number;
   payment_date: Date;
+  coverage_start_date: Date;
+  coverage_end_date: Date;
   amount: number;
   fee_month: number;
   fee_year: number;
@@ -20,8 +22,8 @@ export interface Payment {
 export interface RecordPaymentDTO {
   student_id: number;
   amount: number;
-  fee_month: number;
-  fee_year: number;
+  fee_month?: number;
+  fee_year?: number;
   payment_method?: 'upi';  // Optional, defaults to 'upi'
   transaction_id?: string;
   notes?: string;
@@ -31,6 +33,8 @@ export interface RecordPaymentDTO {
 export interface PaymentWithStudent {
   id: number;
   payment_date: Date;
+  coverage_start_date: Date;
+  coverage_end_date: Date;
   amount: number;
   fee_month: number;
   fee_year: number;
@@ -52,10 +56,32 @@ export interface PendingPayment {
   student_code: string;
   student_email: string | null;
   student_phone: string;
+  branch_id: number;
+  branch_name: string;
   monthly_fee: number;
-  pending_months: number;
+  pending_cycles: number;
   total_pending: number;
   last_payment_date: Date | null;
+  paid_through_date: Date | null;
+  next_due_date: Date;
+  days_until_due: number;
+  due_status: 'overdue' | 'due_today' | 'due_soon' | 'current';
+  renewal_amount: number;
+  last_paid_fee_month: number | null;
+  last_paid_fee_year: number | null;
+}
+
+export interface PaymentAlertSummary {
+  overdue_count: number;
+  due_today_count: number;
+  due_soon_count: number;
+  current_count: number;
+  overdue_amount: number;
+  due_today_amount: number;
+  due_soon_amount: number;
+  attention_required_count: number;
+  attention_required_amount: number;
+  watchlist: PendingPayment[];
 }
 
 // Monthly revenue report

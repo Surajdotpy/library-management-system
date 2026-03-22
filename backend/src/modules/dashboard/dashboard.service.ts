@@ -1,13 +1,114 @@
 import pool from '../../config/db.ts';
 import * as attendanceService from '../attendance/attendance.service.ts';
 import * as paymentService from '../payments/payments.service.ts';
+import type { PendingPayment } from '../payments/payments.types.ts';
 import type {
   DashboardBranchInfo,
   DashboardBranchOverview,
+  DashboardNotification,
   DashboardRecentPayment,
   DashboardStudentInside,
   DashboardSummary,
 } from './dashboard.types.ts';
+
+function formatDate(value: Date): string {
+  return value.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatCurrency(amount: number): string {
+  return `Rs ${amount.toLocaleString('en-IN')}`;
+}
+
+function createPaymentNotification(
+  item: PendingPayment,
+  type: DashboardNotification['type'],
+  severity: DashboardNotification['severity'],
+  title: string,
+  description: string,
+): DashboardNotification {
+  return {
+    id: `${type}-${item.student_id}`,
+    type,
+    severity,
+    title,
+    description,
+    branch_name: item.branch_name,
+    action_route: '/payments',
+  };
+}
+
+function buildDashboardNotifications(
+  paymentWatchlist: PendingPayment[],
+  studentsInside: DashboardStudentInside[],
+): DashboardNotification[] {
+  const notifications: DashboardNotification[] = [];
+
+  for (const item of paymentWatchlist.filter((entry) => entry.due_status === 'overdue').slice(0, 3)) {
+    notifications.push(
+      createPaymentNotification(
+        item,
+        'payment_overdue',
+        'critical',
+        `${item.student_name} is overdue`,
+        `Fee was due on ${formatDate(item.next_due_date)}. Pending ${formatCurrency(item.total_pending)}.`,
+      ),
+    );
+  }
+
+  for (const item of paymentWatchlist.filter((entry) => entry.due_status === 'due_today').slice(0, 2)) {
+    notifications.push(
+      createPaymentNotification(
+        item,
+        'payment_due_today',
+        'warning',
+        `${item.student_name} is due today`,
+        `Renewal is due today for ${formatCurrency(item.renewal_amount)}.`,
+      ),
+    );
+  }
+
+  for (const item of paymentWatchlist.filter((entry) => entry.due_status === 'due_soon').slice(0, 2)) {
+    notifications.push(
+      createPaymentNotification(
+        item,
+        'payment_due_soon',
+        'info',
+        `${item.student_name} is due soon`,
+        `Next renewal is due on ${formatDate(item.next_due_date)}.`,
+      ),
+    );
+  }
+
+  for (const student of studentsInside.filter((entry) => entry.is_overtime).slice(0, 3)) {
+    notifications.push({
+      id: `attendance-overtime-${student.student_id}`,
+      type: 'attendance_overtime',
+      severity: 'critical',
+      title: `${student.student_name} is over the study limit`,
+      description: `Inside for ${student.current_duration_minutes} minutes, which is ${student.overtime_minutes} minutes over plan.`,
+      branch_name: student.branch_name,
+      action_route: '/attendance',
+    });
+  }
+
+  for (const student of studentsInside.filter((entry) => entry.is_near_limit).slice(0, 2)) {
+    notifications.push({
+      id: `attendance-near-limit-${student.student_id}`,
+      type: 'attendance_near_limit',
+      severity: 'warning',
+      title: `${student.student_name} is close to the study limit`,
+      description: `Only ${student.remaining_minutes ?? 0} minutes remaining on the current plan.`,
+      branch_name: student.branch_name,
+      action_route: '/attendance',
+    });
+  }
+
+  return notifications.slice(0, 8);
+}
 
 async function getBranchInfo(branchId: number): Promise<DashboardBranchInfo> {
   const result = await pool.query(
@@ -90,36 +191,7 @@ async function getRecentPayments(branchId?: number): Promise<DashboardRecentPaym
   }
 
   query += ' ORDER BY p.payment_date DESC LIMIT 5';
-  const result = await pool.query(query, params);
-  return result.rows;
-}
-
-async function getStudentsInside(branchId?: number): Promise<DashboardStudentInside[]> {
-  const params: Array<number> = [];
-  let query = `
-    SELECT
-      a.id AS attendance_id,
-      a.entry_time,
-      s.id AS student_id,
-      s.name AS student_name,
-      s.student_id AS student_code,
-      s.branch_id,
-      b.name AS branch_name
-    FROM attendance a
-    JOIN students s ON s.id = a.student_id
-    JOIN branches b ON b.id = s.branch_id
-    WHERE a.attendance_date = CURRENT_DATE
-      AND a.entry_time IS NOT NULL
-      AND a.exit_time IS NULL
-  `;
-
-  if (branchId != null) {
-    params.push(branchId);
-    query += ` AND s.branch_id = $${params.length}`;
-  }
-
-  query += ' ORDER BY a.entry_time DESC LIMIT 5';
-  const result = await pool.query(query, params);
+  const result = await pool.query<DashboardRecentPayment>(query, params);
   return result.rows;
 }
 
@@ -196,19 +268,17 @@ export async function getDashboardSummary(branchId?: number): Promise<DashboardS
     studentStats,
     attendanceSummary,
     monthlyRevenue,
-    pendingPayments,
+    paymentAlerts,
     todayRevenue,
     recentPayments,
-    studentsInside,
     branchOverview,
   ] = await Promise.all([
     getStudentStats(branchId),
     attendanceService.getTodayAttendance(branchId),
     paymentService.getMonthlyRevenue(currentMonth, currentYear, branchId),
-    paymentService.getPendingPayments(branchId),
+    paymentService.getPaymentAlertSummary(branchId),
     getTodayRevenue(branchId),
     getRecentPayments(branchId),
-    getStudentsInside(branchId),
     branchId == null ? getBranchOverview() : Promise.resolve(undefined),
   ]);
 
@@ -221,6 +291,44 @@ export async function getDashboardSummary(branchId?: number): Promise<DashboardS
         ((attendanceSummary.currently_inside / totalCapacity) * 100).toFixed(2),
       )
     : 0;
+
+  const allStudentsInside: DashboardStudentInside[] = attendanceSummary.students_inside
+    .map((student) => ({
+      attendance_id: student.id,
+      entry_time: student.entry_time ?? new Date(),
+      student_id: student.student_id,
+      student_name: student.student_name,
+      student_code: student.student_code,
+      branch_id: student.branch_id,
+      branch_name: student.branch_name,
+      study_plan: student.study_plan,
+      current_duration_minutes: student.current_duration_minutes,
+      allowed_minutes: student.allowed_minutes,
+      remaining_minutes: student.remaining_minutes,
+      overtime_minutes: student.overtime_minutes,
+      is_overtime: student.is_overtime,
+      is_near_limit: student.is_near_limit,
+    }));
+
+  const studentsInsidePreview: DashboardStudentInside[] = allStudentsInside
+    .slice()
+    .sort((left, right) => {
+      if (left.is_overtime !== right.is_overtime) {
+        return Number(right.is_overtime) - Number(left.is_overtime);
+      }
+
+      if (left.is_near_limit !== right.is_near_limit) {
+        return Number(right.is_near_limit) - Number(left.is_near_limit);
+      }
+
+      return right.current_duration_minutes - left.current_duration_minutes;
+    })
+    .slice(0, 5);
+
+  const notifications = buildDashboardNotifications(
+    paymentAlerts.watchlist,
+    allStudentsInside,
+  );
 
   const summary: DashboardSummary = {
     scope: branchId == null ? 'global' : 'branch',
@@ -235,12 +343,24 @@ export async function getDashboardSummary(branchId?: number): Promise<DashboardS
       today_exits: attendanceSummary.total_exits,
       today_revenue: todayRevenue,
       monthly_revenue: monthlyRevenue.total_amount,
-      pending_payments: pendingPayments.length,
+      pending_payments: paymentAlerts.attention_required_count,
+      overdue_payments: paymentAlerts.overdue_count,
+      due_today: paymentAlerts.due_today_count,
+      due_soon: paymentAlerts.due_soon_count,
       total_capacity: totalCapacity,
       occupancy_rate: occupancyRate,
     },
+    payment_alerts: {
+      overdue_count: paymentAlerts.overdue_count,
+      due_today_count: paymentAlerts.due_today_count,
+      due_soon_count: paymentAlerts.due_soon_count,
+      overdue_amount: paymentAlerts.overdue_amount,
+      due_today_amount: paymentAlerts.due_today_amount,
+      due_soon_amount: paymentAlerts.due_soon_amount,
+    },
+    notifications,
     recent_payments: recentPayments,
-    students_inside: studentsInside,
+    students_inside: studentsInsidePreview,
   };
 
   if (branchId == null) {

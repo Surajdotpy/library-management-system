@@ -29,19 +29,19 @@ export async function recordPayment(req: AuthRequest, res: Response) {
   try {
     const data: RecordPaymentDTO = req.body;
 
-    if (!data.student_id || !data.amount || !data.fee_month || !data.fee_year) {
-      return badRequest(
-        res,
-        'Missing required fields: student_id, amount, fee_month, fee_year',
-      );
+    if (!data.student_id || !data.amount) {
+      return badRequest(res, 'Missing required fields: student_id, amount');
     }
 
-    if (data.fee_month < 1 || data.fee_month > 12) {
+    if (data.fee_month != null && (data.fee_month < 1 || data.fee_month > 12)) {
       return badRequest(res, 'Invalid fee_month. Must be between 1 and 12');
     }
 
     const currentYear = new Date().getFullYear();
-    if (data.fee_year < 2020 || data.fee_year > currentYear + 1) {
+    if (
+      data.fee_year != null &&
+      (data.fee_year < 2020 || data.fee_year > currentYear + 1)
+    ) {
       return badRequest(
         res,
         `Invalid fee_year. Must be between 2020 and ${currentYear + 1}`,

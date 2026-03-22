@@ -32,10 +32,19 @@ export interface AttendanceWithStudent {
   student_id: number;
   student_name: string;
   student_code: string;
+  branch_id: number;
+  branch_name: string;
+  study_plan: '2_hours' | '4_hours' | 'unlimited';
   attendance_date: Date;
   entry_time: Date | null;
   exit_time: Date | null;
   duration_minutes: number | null;
+  current_duration_minutes: number;
+  allowed_minutes: number | null;
+  remaining_minutes: number | null;
+  overtime_minutes: number;
+  is_overtime: boolean;
+  is_near_limit: boolean;
   status: string;
   notes: string | null;
 }

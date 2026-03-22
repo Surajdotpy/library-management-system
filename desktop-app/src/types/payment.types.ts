@@ -6,6 +6,8 @@ export interface Payment {
   student_email?: string | null;
   student_phone?: string;
   payment_date: string;
+  coverage_start_date: string;
+  coverage_end_date: string;
   amount: number;
   fee_month: number;
   fee_year: number;
@@ -22,12 +24,14 @@ export interface Payment {
 export interface RecordPaymentRequest {
   student_id: number;
   amount: number;
-  fee_month: number;
-  fee_year: number;
+  fee_month?: number;
+  fee_year?: number;
   payment_method?: 'upi';
   transaction_id?: string;
   notes?: string;
 }
+
+export type PaymentDueStatus = 'overdue' | 'due_today' | 'due_soon' | 'current';
 
 export interface PendingPayment {
   student_id: number;
@@ -35,10 +39,19 @@ export interface PendingPayment {
   student_code: string;
   student_email: string | null;
   student_phone: string;
+  branch_id: number;
+  branch_name: string;
   monthly_fee: number;
-  pending_months: number;
+  pending_cycles: number;
   total_pending: number;
   last_payment_date: string | null;
+  paid_through_date: string | null;
+  next_due_date: string;
+  days_until_due: number;
+  due_status: PaymentDueStatus;
+  renewal_amount: number;
+  last_paid_fee_month: number | null;
+  last_paid_fee_year: number | null;
 }
 
 export interface MonthlyRevenue {
@@ -64,6 +77,8 @@ export interface PaymentReceipt {
   student_phone: string;
   amount: number;
   payment_date: string;
+  coverage_start_date: string;
+  coverage_end_date: string;
   fee_month: number;
   fee_year: number;
   payment_method: string;

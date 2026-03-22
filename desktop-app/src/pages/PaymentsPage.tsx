@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
+  CalendarClock,
+  CircleAlert,
   DollarSign,
   Loader2,
   Plus,
@@ -15,28 +17,19 @@ import { Badge, Button, Card, Input } from '@/components/ui';
 import { getBranchName } from '@/config/branches';
 import { getStoredUser } from '@/lib/auth/session';
 import { paymentsApi, studentsApi } from '@/lib/api';
-import type { MonthlyRevenue, Payment, PendingPayment, RecordPaymentRequest, Student } from '@/types';
-
-const MONTH_OPTIONS = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
-] as const;
+import type {
+  MonthlyRevenue,
+  Payment,
+  PendingPayment,
+  RecordPaymentRequest,
+  Student,
+} from '@/types';
 
 function formatCurrency(amount: number): string {
   return `Rs ${amount.toLocaleString('en-IN')}`;
 }
 
-function formatDate(value: string | null): string {
+function formatDate(value: string | Date | null): string {
   if (!value) {
     return '-';
   }
@@ -48,9 +41,28 @@ function formatDate(value: string | null): string {
   });
 }
 
-function formatMonthYear(month: number, year: number): string {
-  const monthLabel = MONTH_OPTIONS.find((option) => option.value === month)?.label ?? `Month ${month}`;
-  return `${monthLabel} ${year}`;
+function formatDateRange(startDate: string, endDate: string): string {
+  return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+}
+
+function addDays(baseDate: Date, days: number): Date {
+  const nextDate = new Date(baseDate);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+function getRenewalVariant(status: PendingPayment['due_status']) {
+  if (status === 'overdue') return 'danger';
+  if (status === 'due_today') return 'warning';
+  if (status === 'due_soon') return 'info';
+  return 'success';
+}
+
+function getRenewalLabel(status: PendingPayment['due_status']) {
+  if (status === 'overdue') return 'Overdue';
+  if (status === 'due_today') return 'Due Today';
+  if (status === 'due_soon') return 'Due Soon';
+  return 'Current';
 }
 
 export default function PaymentsPage() {
@@ -60,14 +72,14 @@ export default function PaymentsPage() {
     ? 'All Branches'
     : getBranchName(currentUser?.branch_id ?? null);
   const currentDate = new Date();
-  const currentMonth = currentDate.getMonth() + 1;
-  const currentYear = currentDate.getFullYear();
 
   const [students, setStudents] = useState<Student[]>([]);
   const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
   const [currentMonthPayments, setCurrentMonthPayments] = useState<Payment[]>([]);
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue | null>(null);
+  const [selectedStudentPayments, setSelectedStudentPayments] = useState<Payment[]>([]);
+  const [selectedStudentPaymentsLoading, setSelectedStudentPaymentsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -77,8 +89,6 @@ export default function PaymentsPage() {
   const [paymentForm, setPaymentForm] = useState<RecordPaymentRequest>({
     student_id: 0,
     amount: 0,
-    fee_month: currentMonth,
-    fee_year: currentYear,
     payment_method: 'upi',
     transaction_id: '',
     notes: '',
@@ -93,9 +103,13 @@ export default function PaymentsPage() {
         await Promise.all([
           studentsApi.getAll(),
           paymentsApi.getAll({ limit: 25 }),
-          paymentsApi.getAll({ month: currentMonth, year: currentYear, limit: 500 }),
+          paymentsApi.getAll({
+            month: currentDate.getMonth() + 1,
+            year: currentDate.getFullYear(),
+            limit: 500,
+          }),
           paymentsApi.getPending(),
-          paymentsApi.getMonthlyRevenue(currentYear, currentMonth),
+          paymentsApi.getMonthlyRevenue(currentDate.getFullYear(), currentDate.getMonth() + 1),
         ]);
 
       setStudents(studentData);
@@ -112,8 +126,45 @@ export default function PaymentsPage() {
   };
 
   useEffect(() => {
-    fetchPaymentsData();
+    void fetchPaymentsData();
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadStudentPayments() {
+      if (!paymentForm.student_id) {
+        setSelectedStudentPayments([]);
+        return;
+      }
+
+      setSelectedStudentPaymentsLoading(true);
+
+      try {
+        const history = await paymentsApi.getStudentPayments(paymentForm.student_id);
+
+        if (isMounted) {
+          setSelectedStudentPayments(history);
+        }
+      } catch (err) {
+        console.error('Failed to load selected student payment history.', err);
+
+        if (isMounted) {
+          setSelectedStudentPayments([]);
+        }
+      } finally {
+        if (isMounted) {
+          setSelectedStudentPaymentsLoading(false);
+        }
+      }
+    }
+
+    void loadStudentPayments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [paymentForm.student_id]);
 
   const activeStudents = useMemo(
     () =>
@@ -128,6 +179,36 @@ export default function PaymentsPage() {
     [activeStudents, paymentForm.student_id],
   );
 
+  const selectedRenewalStatus = useMemo(
+    () => pendingPayments.find((student) => student.student_id === paymentForm.student_id) ?? null,
+    [paymentForm.student_id, pendingPayments],
+  );
+
+  const selectedLatestPayment = selectedStudentPayments[0] ?? null;
+
+  const renewalPreview = useMemo(() => {
+    if (!selectedStudent) {
+      return null;
+    }
+
+    const today = new Date();
+    const latestCoverageEnd = selectedLatestPayment?.coverage_end_date
+      ? new Date(selectedLatestPayment.coverage_end_date)
+      : null;
+    const coverageStart =
+      latestCoverageEnd && latestCoverageEnd >= today
+        ? addDays(latestCoverageEnd, 1)
+        : today;
+    const coverageEnd = addDays(coverageStart, 29);
+    const nextDue = addDays(coverageEnd, 1);
+
+    return {
+      coverageStart,
+      coverageEnd,
+      nextDue,
+    };
+  }, [selectedLatestPayment, selectedStudent]);
+
   const todayCollection = useMemo(() => {
     const todayKey = currentDate.toISOString().slice(0, 10);
     const todayPayments = currentMonthPayments.filter(
@@ -140,8 +221,21 @@ export default function PaymentsPage() {
     };
   }, [currentDate, currentMonthPayments]);
 
-  const pendingAmount = useMemo(
-    () => pendingPayments.reduce((sum, payment) => sum + payment.total_pending, 0),
+  const overdueAmount = useMemo(
+    () =>
+      pendingPayments
+        .filter((payment) => payment.due_status === 'overdue')
+        .reduce((sum, payment) => sum + payment.total_pending, 0),
+    [pendingPayments],
+  );
+
+  const dueTodayCount = useMemo(
+    () => pendingPayments.filter((payment) => payment.due_status === 'due_today').length,
+    [pendingPayments],
+  );
+
+  const dueSoonCount = useMemo(
+    () => pendingPayments.filter((payment) => payment.due_status === 'due_soon').length,
     [pendingPayments],
   );
 
@@ -156,14 +250,10 @@ export default function PaymentsPage() {
       (payment) =>
         payment.student_name.toLowerCase().includes(normalizedQuery) ||
         payment.student_code.toLowerCase().includes(normalizedQuery) ||
-        payment.student_phone.includes(searchQuery),
+        payment.student_phone.includes(searchQuery) ||
+        payment.branch_name.toLowerCase().includes(normalizedQuery),
     );
   }, [pendingPayments, searchQuery]);
-
-  const yearOptions = useMemo(
-    () => [currentYear - 1, currentYear, currentYear + 1],
-    [currentYear],
-  );
 
   const updatePaymentForm = <K extends keyof RecordPaymentRequest>(
     field: K,
@@ -215,23 +305,20 @@ export default function PaymentsPage() {
       await paymentsApi.record({
         student_id: paymentForm.student_id,
         amount: selectedStudent.monthly_fee,
-        fee_month: paymentForm.fee_month,
-        fee_year: paymentForm.fee_year,
         payment_method: 'upi',
         transaction_id: paymentForm.transaction_id?.trim() || undefined,
         notes: paymentForm.notes?.trim() || undefined,
       });
 
-      setPaymentSuccess('Payment recorded successfully.');
+      setPaymentSuccess('Payment recorded successfully. The student coverage has been renewed for 30 days.');
       setPaymentForm({
         student_id: 0,
         amount: 0,
-        fee_month: currentMonth,
-        fee_year: currentYear,
         payment_method: 'upi',
         transaction_id: '',
         notes: '',
       });
+      setSelectedStudentPayments([]);
 
       await fetchPaymentsData();
     } catch (err: any) {
@@ -256,7 +343,7 @@ export default function PaymentsPage() {
               Payments Management
             </h1>
             <p className="mt-1 text-gray-600">
-              Track and collect monthly fees for {branchLabel}
+              Track collections, renew 30-day plans, and follow upcoming dues for {branchLabel}
             </p>
           </div>
 
@@ -267,7 +354,7 @@ export default function PaymentsPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={fetchPaymentsData}
+              onClick={() => void fetchPaymentsData()}
               disabled={loading || paymentLoading}
               className="flex items-center gap-2"
             >
@@ -296,7 +383,7 @@ export default function PaymentsPage() {
                   <p className="text-sm">{error}</p>
                 </div>
               </div>
-              <Button type="button" variant="secondary" onClick={fetchPaymentsData}>
+              <Button type="button" variant="secondary" onClick={() => void fetchPaymentsData()}>
                 Retry
               </Button>
             </div>
@@ -305,7 +392,7 @@ export default function PaymentsPage() {
 
         {!loading && !error && (
           <>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
               <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-100">
                 <p className="text-sm text-purple-700">Today's Collection</p>
                 <h2 className="mt-2 text-3xl font-bold text-purple-900">
@@ -326,13 +413,23 @@ export default function PaymentsPage() {
                 </p>
               </Card>
 
+              <Card className="border-red-200 bg-gradient-to-br from-red-50 to-rose-100">
+                <p className="text-sm text-red-700">Overdue Renewals</p>
+                <h2 className="mt-2 text-3xl font-bold text-red-900">
+                  {pendingPayments.filter((payment) => payment.due_status === 'overdue').length}
+                </h2>
+                <p className="mt-1 text-sm text-red-700">
+                  {formatCurrency(overdueAmount)} pending now
+                </p>
+              </Card>
+
               <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-100">
-                <p className="text-sm text-amber-700">Pending Amount</p>
+                <p className="text-sm text-amber-700">Upcoming Renewals</p>
                 <h2 className="mt-2 text-3xl font-bold text-amber-900">
-                  {formatCurrency(pendingAmount)}
+                  {dueTodayCount + dueSoonCount}
                 </h2>
                 <p className="mt-1 text-sm text-amber-700">
-                  {pendingPayments.length} student{pendingPayments.length === 1 ? '' : 's'} pending
+                  {dueTodayCount} due today | {dueSoonCount} in 7 days
                 </p>
               </Card>
             </div>
@@ -344,7 +441,7 @@ export default function PaymentsPage() {
                     <div>
                       <h3 className="text-lg font-bold text-gray-900">Record Payment</h3>
                       <p className="mt-1 text-sm text-gray-600">
-                        Collect the monthly fee for a student
+                        Renew a student's coverage for the next 30-day cycle
                       </p>
                     </div>
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-100">
@@ -384,45 +481,68 @@ export default function PaymentsPage() {
                       fullWidth
                     />
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-gray-700">
-                          Fee Month
-                        </label>
-                        <select
-                          value={paymentForm.fee_month}
-                          onChange={(event) =>
-                            updatePaymentForm('fee_month', Number(event.target.value))
-                          }
-                          disabled={paymentLoading}
-                          className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-gray-900 transition-all focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
-                        >
-                          {MONTH_OPTIONS.map((month) => (
-                            <option key={month.value} value={month.value}>
-                              {month.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-gray-700">
-                          Fee Year
-                        </label>
-                        <select
-                          value={paymentForm.fee_year}
-                          onChange={(event) =>
-                            updatePaymentForm('fee_year', Number(event.target.value))
-                          }
-                          disabled={paymentLoading}
-                          className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-gray-900 transition-all focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
-                        >
-                          {yearOptions.map((year) => (
-                            <option key={year} value={year}>
-                              {year}
-                            </option>
-                          ))}
-                        </select>
+                    <div className="rounded-2xl border border-purple-100 bg-purple-50/70 p-4">
+                      <div className="flex items-start gap-3">
+                        <CalendarClock className="mt-0.5 h-5 w-5 text-purple-600" />
+                        <div className="space-y-2 text-sm text-gray-700">
+                          <p className="font-semibold text-gray-900">Renewal preview</p>
+                          {selectedStudent ? (
+                            selectedStudentPaymentsLoading ? (
+                              <p>Loading current coverage...</p>
+                            ) : (
+                              <>
+                                <p>
+                                  Last payment:{' '}
+                                  <span className="font-medium">
+                                    {selectedLatestPayment
+                                      ? formatDate(selectedLatestPayment.payment_date)
+                                      : 'No payment yet'}
+                                  </span>
+                                </p>
+                                <p>
+                                  Active through:{' '}
+                                  <span className="font-medium">
+                                    {selectedRenewalStatus?.paid_through_date
+                                      ? formatDate(selectedRenewalStatus.paid_through_date)
+                                      : selectedLatestPayment
+                                        ? formatDate(selectedLatestPayment.coverage_end_date)
+                                        : 'Not covered yet'}
+                                  </span>
+                                </p>
+                                {selectedRenewalStatus && (
+                                  <p>
+                                    Current status:{' '}
+                                    <Badge
+                                      variant={getRenewalVariant(selectedRenewalStatus.due_status)}
+                                      size="sm"
+                                    >
+                                      {getRenewalLabel(selectedRenewalStatus.due_status)}
+                                    </Badge>
+                                  </p>
+                                )}
+                                {renewalPreview && (
+                                  <>
+                                    <p>
+                                      New coverage:{' '}
+                                      <span className="font-medium">
+                                        {formatDate(renewalPreview.coverageStart)} -{' '}
+                                        {formatDate(renewalPreview.coverageEnd)}
+                                      </span>
+                                    </p>
+                                    <p>
+                                      Next due after this renewal:{' '}
+                                      <span className="font-medium">
+                                        {formatDate(renewalPreview.nextDue)}
+                                      </span>
+                                    </p>
+                                  </>
+                                )}
+                              </>
+                            )
+                          ) : (
+                            <p>Select a student to preview their current coverage and next due date.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -479,9 +599,9 @@ export default function PaymentsPage() {
                   <div className="border-b border-gray-100 p-6">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-gray-900">Pending Payments</h3>
+                        <h3 className="text-lg font-bold text-gray-900">Renewal Watchlist</h3>
                         <p className="mt-1 text-sm text-gray-600">
-                          Students with unpaid monthly dues
+                          Students who are overdue, due today, or due within the next 7 days
                         </p>
                       </div>
 
@@ -489,7 +609,7 @@ export default function PaymentsPage() {
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                         <input
                           type="text"
-                          placeholder="Search student or phone..."
+                          placeholder="Search student, branch, or phone..."
                           value={searchQuery}
                           onChange={(event) => setSearchQuery(event.target.value)}
                           className="w-full rounded-xl border border-gray-200 py-3 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -503,12 +623,12 @@ export default function PaymentsPage() {
                       <Wallet className="mx-auto mb-3 h-12 w-12 text-gray-300" />
                       <p className="font-semibold text-gray-900">
                         {pendingPayments.length === 0
-                          ? 'No pending payments right now'
-                          : 'No pending student matched your search'}
+                          ? 'No renewals need attention right now'
+                          : 'No student matched your search'}
                       </p>
                       <p className="mt-1 text-sm text-gray-600">
                         {pendingPayments.length === 0
-                          ? 'All visible students are up to date.'
+                          ? 'Everyone visible is currently within their paid period.'
                           : 'Try a different search term.'}
                       </p>
                     </div>
@@ -521,13 +641,19 @@ export default function PaymentsPage() {
                               Student
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Pending Months
-                            </th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Total Pending
+                              Status
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                               Last Payment
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Active Through
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Next Due
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Amount
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                               Actions
@@ -549,18 +675,40 @@ export default function PaymentsPage() {
                                     {payment.student_name}
                                   </p>
                                   <p className="text-sm text-gray-500">
-                                    {payment.student_code} • {payment.student_phone}
+                                    {payment.student_code} | {payment.student_phone}
+                                  </p>
+                                  {isSuperAdmin && (
+                                    <p className="text-xs text-gray-500">{payment.branch_name}</p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="space-y-1">
+                                  <Badge variant={getRenewalVariant(payment.due_status)}>
+                                    {getRenewalLabel(payment.due_status)}
+                                  </Badge>
+                                  <p className="text-xs text-gray-500">
+                                    {payment.due_status === 'overdue'
+                                      ? `${Math.abs(payment.days_until_due)} day(s) late`
+                                      : payment.due_status === 'due_today'
+                                        ? 'Renew today'
+                                        : `${payment.days_until_due} day(s) left`}
                                   </p>
                                 </div>
                               </td>
-                              <td className="px-6 py-4 text-sm text-gray-900">
-                                {payment.pending_months}
-                              </td>
-                              <td className="px-6 py-4 text-sm font-semibold text-amber-700">
-                                {formatCurrency(payment.total_pending)}
-                              </td>
                               <td className="px-6 py-4 text-sm text-gray-600">
                                 {formatDate(payment.last_payment_date)}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-600">
+                                {formatDate(payment.paid_through_date)}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-900">
+                                {formatDate(payment.next_due_date)}
+                              </td>
+                              <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                                {payment.due_status === 'due_soon'
+                                  ? `${formatCurrency(payment.renewal_amount)} upcoming`
+                                  : formatCurrency(payment.total_pending)}
                               </td>
                               <td className="px-6 py-4">
                                 <button
@@ -585,7 +733,7 @@ export default function PaymentsPage() {
                       <div>
                         <h3 className="text-lg font-bold text-gray-900">Recent Payments</h3>
                         <p className="mt-1 text-sm text-gray-600">
-                          Latest recorded payments across visible data
+                          Latest recorded renewals and their active coverage windows
                         </p>
                       </div>
                       <Badge variant="info">{recentPayments.length}</Badge>
@@ -609,13 +757,13 @@ export default function PaymentsPage() {
                               Student
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Fee Month
+                              Coverage
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                               Amount
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Date
+                              Paid On
                             </th>
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                               Receipt
@@ -645,7 +793,10 @@ export default function PaymentsPage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4 text-sm text-gray-900">
-                                {formatMonthYear(payment.fee_month, payment.fee_year)}
+                                {formatDateRange(
+                                  payment.coverage_start_date,
+                                  payment.coverage_end_date,
+                                )}
                               </td>
                               <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                                 {formatCurrency(payment.amount)}
@@ -667,6 +818,20 @@ export default function PaymentsPage() {
                       </table>
                     </div>
                   )}
+                </Card>
+
+                <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-100">
+                  <div className="flex items-start gap-3">
+                    <CircleAlert className="mt-0.5 h-5 w-5 text-blue-700" />
+                    <div>
+                      <p className="font-semibold text-blue-900">How renewals work now</p>
+                      <p className="mt-1 text-sm text-blue-800">
+                        Each payment extends the student by the next 30-day coverage cycle. The system now tracks
+                        active through and next due dates directly, so admins can see overdue, due today, and due soon
+                        renewals without guessing from a month label.
+                      </p>
+                    </div>
+                  </div>
                 </Card>
               </div>
             </div>

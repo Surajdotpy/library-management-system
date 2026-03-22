@@ -41,6 +41,8 @@ describe('Dashboard API', () => {
     expect(Array.isArray(response.body.data.branch_overview)).toBe(true);
     expect(response.body.data.stats).toHaveProperty('total_students');
     expect(response.body.data.stats).toHaveProperty('monthly_revenue');
+    expect(response.body.data).toHaveProperty('payment_alerts');
+    expect(Array.isArray(response.body.data.notifications)).toBe(true);
   });
 
   it('should return branch-scoped dashboard summary for admins', async () => {
@@ -53,6 +55,9 @@ describe('Dashboard API', () => {
     expect(response.body.data.scope).toBe('branch');
     expect(response.body.data.branch.id).toBe(1);
     expect(response.body.data.branch_overview).toBeUndefined();
+    expect(response.body.data.stats).toHaveProperty('overdue_payments');
+    expect(response.body.data.stats).toHaveProperty('due_today');
+    expect(response.body.data.stats).toHaveProperty('due_soon');
   });
 
   it('should block admins from requesting another branch summary', async () => {

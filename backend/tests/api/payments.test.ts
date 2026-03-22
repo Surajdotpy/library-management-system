@@ -1,5 +1,6 @@
 import request from 'supertest';
 import app from '../../src/app.ts';
+import pool from '../../src/config/db.ts';
 import { deleteFeePayment, ensureTestAdminPassword, syncTableIdSequence } from '../helpers/test-db.ts';
 
 describe('Payments API', () => {
@@ -15,6 +16,14 @@ describe('Payments API', () => {
   beforeAll(async () => {
     await ensureTestAdminPassword();
     await deleteFeePayment(paymentFixture.student_id, paymentFixture.fee_month, paymentFixture.fee_year);
+    await pool.query(
+      `
+        DELETE FROM fee_payments
+        WHERE student_id = $1
+          AND payment_date::date = CURRENT_DATE
+      `,
+      [paymentFixture.student_id],
+    );
     await syncTableIdSequence('fee_payments');
 
     const loginResponse = await request(app)
@@ -43,10 +52,12 @@ describe('Payments API', () => {
       expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
       expect(response.body.data.receipt_number).toMatch(/^REC-/);
+      expect(response.body.data.coverage_start_date).toBeTruthy();
+      expect(response.body.data.coverage_end_date).toBeTruthy();
     });
 
     it('should reject duplicate payment', async () => {
-      // Try to record same month again
+      // Try to record same day again
       const response = await request(app)
         .post('/api/payments')
         .set('Authorization', `Bearer ${authToken}`)
@@ -119,6 +130,11 @@ describe('Payments API', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(Array.isArray(response.body.data)).toBe(true);
+
+      if (response.body.data.length > 0) {
+        expect(response.body.data[0]).toHaveProperty('next_due_date');
+        expect(response.body.data[0]).toHaveProperty('due_status');
+      }
     });
   });
 

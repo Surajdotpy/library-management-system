@@ -36,6 +36,7 @@ export type {
 export type {
   Payment,
   RecordPaymentRequest,
+  PaymentDueStatus,
   PendingPayment,
   MonthlyRevenue,
   BranchRevenue,
@@ -49,6 +50,8 @@ export type {
   DashboardRecentPayment,
   DashboardStudentInside,
   DashboardBranchOverview,
+  DashboardPaymentAlerts,
+  DashboardNotification,
   DashboardSummary,
 } from './dashboard.types';
 

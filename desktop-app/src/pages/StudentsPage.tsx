@@ -51,7 +51,7 @@ export default function StudentsPage() {
     text: string;
   } | null>(null);
 
-  const filteredStudents = students.filter((student) => {
+  const matchingStudents = students.filter((student) => {
     const normalizedQuery = searchQuery.toLowerCase();
     const matchesSearch =
       student.name.toLowerCase().includes(normalizedQuery) ||
@@ -59,13 +59,18 @@ export default function StudentsPage() {
       student.phone.includes(searchQuery);
 
     const matchesPlan = planFilter === 'all' || student.study_plan === planFilter;
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'active' && student.is_active) ||
-      (statusFilter === 'inactive' && !student.is_active);
 
-    return matchesSearch && matchesPlan && matchesStatus;
+    return matchesSearch && matchesPlan;
   });
+
+  const activeStudents = matchingStudents.filter((student) => student.is_active);
+  const inactiveStudents = matchingStudents.filter((student) => !student.is_active);
+  const displayedActiveStudents =
+    statusFilter === 'inactive' ? [] : activeStudents;
+  const displayedInactiveStudents =
+    statusFilter === 'active' ? [] : inactiveStudents;
+  const visibleStudentsCount =
+    displayedActiveStudents.length + displayedInactiveStudents.length;
 
   const activeStudentsCount = students.filter((student) => student.is_active).length;
   const inactiveStudentsCount = students.length - activeStudentsCount;
@@ -140,6 +145,200 @@ export default function StudentsPage() {
     });
   };
 
+  const renderStudentsTable = (
+    sectionStudents: Student[],
+    options: {
+      title: string;
+      description: string;
+      badgeVariant: 'success' | 'danger';
+      badgeLabel: string;
+      emptyStateTitle: string;
+      emptyStateDescription: string;
+    },
+  ) => (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+    >
+      <Card noPadding>
+        <div className="border-b border-gray-200 bg-gray-50/80 px-6 py-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">{options.title}</h3>
+              <p className="mt-1 text-sm text-gray-600">{options.description}</p>
+            </div>
+            <Badge variant={options.badgeVariant}>{options.badgeLabel}</Badge>
+          </div>
+        </div>
+
+        {sectionStudents.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <Users className="mx-auto mb-4 h-12 w-12 text-gray-300" />
+            <h4 className="text-base font-semibold text-gray-900">
+              {options.emptyStateTitle}
+            </h4>
+            <p className="mt-2 text-sm text-gray-600">
+              {options.emptyStateDescription}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-gray-200 bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                      Student
+                    </th>
+                    {isSuperAdmin && (
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                        Branch
+                      </th>
+                    )}
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                      Contact
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                      Plan and Fee
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                      Joined
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                      Status
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {sectionStudents.map((student, index) => {
+                    const plan = getPlanDetails(student.study_plan);
+
+                    return (
+                      <motion.tr
+                        key={student.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="transition-colors hover:bg-gray-50"
+                      >
+                        <td className="px-6 py-4">
+                          <div>
+                            <p className="font-semibold text-gray-900">{student.name}</p>
+                            <p className="text-sm font-medium text-purple-600">
+                              {student.student_id}
+                            </p>
+                          </div>
+                        </td>
+
+                        {isSuperAdmin && (
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Building2 className="h-4 w-4 text-gray-400" />
+                              {getBranchName(student.branch_id)}
+                            </div>
+                          </td>
+                        )}
+
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <Phone className="h-4 w-4" />
+                              {student.phone}
+                            </div>
+                            {student.email && (
+                              <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <Mail className="h-4 w-4" />
+                                <span className="max-w-[200px] truncate">{student.email}</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              {plan?.label || student.study_plan}
+                            </p>
+                            <p className="text-sm font-bold text-purple-600">
+                              INR {student.monthly_fee}/month
+                            </p>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Calendar className="h-4 w-4" />
+                            {formatDate(student.created_at)}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <Badge variant={student.is_active ? 'success' : 'danger'}>
+                            {student.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg p-2 text-purple-600 transition-colors hover:bg-purple-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                              title={
+                                student.is_active
+                                  ? 'Edit Student'
+                                  : 'Inactive students cannot be edited'
+                              }
+                              onClick={() => handleEdit(student)}
+                              disabled={!student.is_active}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(student.id, student.name)}
+                              className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                              title={
+                                student.is_active
+                                  ? 'Mark Student Inactive'
+                                  : 'Student is already inactive'
+                              }
+                              disabled={!student.is_active}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                            {!student.is_active && (
+                              <button
+                                type="button"
+                                onClick={() => handleReactivate(student.id, student.name)}
+                                className="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-50"
+                                title="Reactivate Student"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 text-sm text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{sectionStudents.length}</span>{' '}
+              student{sectionStudents.length === 1 ? '' : 's'} in this section
+            </div>
+          </>
+        )}
+      </Card>
+    </motion.div>
+  );
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -156,7 +355,7 @@ export default function StudentsPage() {
             <p className="mt-1 text-gray-600">
               {loading
                 ? 'Loading students...'
-                : `Showing ${filteredStudents.length} of ${students.length} students | ${branchScopeLabel}`}
+                : `Showing ${visibleStudentsCount} of ${students.length} students | ${branchScopeLabel}`}
             </p>
           </div>
 
@@ -342,7 +541,7 @@ export default function StudentsPage() {
           </Card>
         )}
 
-        {!loading && !error && filteredStudents.length === 0 && (
+        {!loading && !error && visibleStudentsCount === 0 && (
           <Card>
             <div className="py-12 text-center">
               <Users className="mx-auto mb-4 h-16 w-16 text-gray-300" />
@@ -367,178 +566,32 @@ export default function StudentsPage() {
           </Card>
         )}
 
-        {!loading && !error && filteredStudents.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card noPadding>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-gray-200 bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                        Student
-                      </th>
-                      {isSuperAdmin && (
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                          Branch
-                        </th>
-                      )}
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                        Contact
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                        Plan and Fee
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                        Joined
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                        Status
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredStudents.map((student, index) => {
-                      const plan = getPlanDetails(student.study_plan);
+        {!loading && !error && visibleStudentsCount > 0 && (
+          <div className="space-y-6">
+            {statusFilter !== 'inactive' &&
+              renderStudentsTable(displayedActiveStudents, {
+                title: 'Active Students',
+                description:
+                  'Students currently available for attendance, payments, and seat assignment.',
+                badgeVariant: 'success',
+                badgeLabel: `${displayedActiveStudents.length} active`,
+                emptyStateTitle: 'No active students in this view',
+                emptyStateDescription:
+                  'Try changing the search or filters, or reactivate a student from the inactive section.',
+              })}
 
-                      return (
-                        <motion.tr
-                          key={student.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          className="transition-colors hover:bg-gray-50"
-                        >
-                          <td className="px-6 py-4">
-                            <div>
-                              <p className="font-semibold text-gray-900">{student.name}</p>
-                              <p className="text-sm font-medium text-purple-600">
-                                {student.student_id}
-                              </p>
-                            </div>
-                          </td>
-
-                          {isSuperAdmin && (
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2 text-sm text-gray-700">
-                                <Building2 className="h-4 w-4 text-gray-400" />
-                                {getBranchName(student.branch_id)}
-                              </div>
-                            </td>
-                          )}
-
-                          <td className="px-6 py-4">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <Phone className="h-4 w-4" />
-                                {student.phone}
-                              </div>
-                              {student.email && (
-                                <div className="flex items-center gap-2 text-sm text-gray-600">
-                                  <Mail className="h-4 w-4" />
-                                  <span className="max-w-[200px] truncate">{student.email}</span>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <div>
-                              <p className="font-semibold text-gray-900">
-                                {plan?.label || student.study_plan}
-                              </p>
-                              <p className="text-sm font-bold text-purple-600">
-                                INR {student.monthly_fee}/month
-                              </p>
-                            </div>
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Calendar className="h-4 w-4" />
-                              {formatDate(student.created_at)}
-                            </div>
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <Badge variant={student.is_active ? 'success' : 'danger'}>
-                              {student.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                className="rounded-lg p-2 text-purple-600 transition-colors hover:bg-purple-50 disabled:opacity-40 disabled:hover:bg-transparent"
-                                title={
-                                  student.is_active
-                                    ? 'Edit Student'
-                                    : 'Inactive students cannot be edited'
-                                }
-                                onClick={() => handleEdit(student)}
-                                disabled={!student.is_active}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(student.id, student.name)}
-                                className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
-                                title={
-                                  student.is_active
-                                    ? 'Mark Student Inactive'
-                                    : 'Student is already inactive'
-                                }
-                                disabled={!student.is_active}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                              {!student.is_active && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleReactivate(student.id, student.name)}
-                                  className="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-50"
-                                  title="Reactivate Student"
-                                >
-                                  <RotateCcw className="h-4 w-4" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-                <div className="flex items-center justify-between text-sm text-gray-600">
-                  <div>
-                    Showing <span className="font-semibold text-gray-900">{filteredStudents.length}</span>{' '}
-                    of <span className="font-semibold text-gray-900">{students.length}</span>{' '}
-                    students
-                  </div>
-                  <div className="flex gap-6">
-                    <span>
-                      Active: <span className="font-semibold text-green-600">{activeStudentsCount}</span>
-                    </span>
-                    <span>
-                      Inactive:{' '}
-                      <span className="font-semibold text-red-600">{inactiveStudentsCount}</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
+            {statusFilter !== 'active' &&
+              renderStudentsTable(displayedInactiveStudents, {
+                title: 'Inactive Students',
+                description:
+                  'These records are preserved for history and can be reactivated whenever needed.',
+                badgeVariant: 'danger',
+                badgeLabel: `${displayedInactiveStudents.length} inactive`,
+                emptyStateTitle: 'No inactive students in this view',
+                emptyStateDescription:
+                  'Inactive students will appear here after a soft delete, and you can restore them from this section.',
+              })}
+          </div>
         )}
       </div>
 

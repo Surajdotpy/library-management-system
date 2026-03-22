@@ -28,10 +28,19 @@ export interface TodayAttendanceStudent {
   student_id: number;
   student_name: string;
   student_code: string;
+  branch_id: number;
+  branch_name: string;
+  study_plan: '2_hours' | '4_hours' | 'unlimited';
   attendance_date: string;
   entry_time: string | null;
   exit_time: string | null;
   duration_minutes: number | null;
+  current_duration_minutes: number;
+  allowed_minutes: number | null;
+  remaining_minutes: number | null;
+  overtime_minutes: number;
+  is_overtime: boolean;
+  is_near_limit: boolean;
   status: string;
   notes: string | null;
 }

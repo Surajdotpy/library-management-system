@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
+  BellRing,
   Building2,
   Clock,
   DollarSign,
@@ -28,6 +29,33 @@ function formatDateTime(value: string): string {
   });
 }
 
+function formatDuration(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (remainingMinutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${remainingMinutes}m`;
+}
+
+function notificationBadgeStyles(severity: 'critical' | 'warning' | 'info'): string {
+  if (severity === 'critical') {
+    return 'bg-red-100 text-red-700';
+  }
+
+  if (severity === 'warning') {
+    return 'bg-amber-100 text-amber-700';
+  }
+
+  return 'bg-blue-100 text-blue-700';
+}
+
 export default function DashboardPage() {
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
@@ -37,7 +65,7 @@ export default function DashboardPage() {
   const branchLabel = summary?.branch?.name ?? (isSuperAdmin ? 'All Branches' : 'My Branch');
   const introTitle = isSuperAdmin ? 'Super Admin Overview' : 'Branch Admin Overview';
   const introText = isSuperAdmin
-    ? 'Track student activity, attendance, revenue, and capacity across every active branch.'
+    ? 'Track student activity, renewals, overtime attendance, revenue, and capacity across every active branch.'
     : `You are viewing the live operating dashboard for ${branchLabel}. All data here is limited to your branch.`;
 
   return (
@@ -133,7 +161,7 @@ export default function DashboardPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <Card className="border-green-200 bg-gradient-to-br from-green-50 to-emerald-100">
                 <p className="text-sm font-medium text-green-700">Active Students</p>
                 <p className="mt-2 text-2xl font-bold text-green-900">
@@ -144,13 +172,23 @@ export default function DashboardPage() {
                 </p>
               </Card>
 
+              <Card className="border-red-200 bg-gradient-to-br from-red-50 to-rose-100">
+                <p className="text-sm font-medium text-red-700">Overdue Renewals</p>
+                <p className="mt-2 text-2xl font-bold text-red-900">
+                  {summary.payment_alerts.overdue_count}
+                </p>
+                <p className="mt-1 text-sm text-red-700">
+                  {formatCurrency(summary.payment_alerts.overdue_amount)}
+                </p>
+              </Card>
+
               <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-100">
-                <p className="text-sm font-medium text-amber-700">Pending Payments</p>
+                <p className="text-sm font-medium text-amber-700">Due Today</p>
                 <p className="mt-2 text-2xl font-bold text-amber-900">
-                  {summary.stats.pending_payments}
+                  {summary.payment_alerts.due_today_count}
                 </p>
                 <p className="mt-1 text-sm text-amber-700">
-                  Entries today: {summary.stats.today_entries} | Exits: {summary.stats.today_exits}
+                  Due in 7 days: {summary.payment_alerts.due_soon_count}
                 </p>
               </Card>
 
@@ -165,65 +203,142 @@ export default function DashboardPage() {
               </Card>
             </div>
 
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_1fr]">
+              <Card noPadding>
+                <div className="border-b border-gray-100 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Recent Payments</h3>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Latest recorded collections across visible data
+                      </p>
+                    </div>
+                    <Badge variant="info">{summary.recent_payments.length}</Badge>
+                  </div>
+                </div>
+
+                {summary.recent_payments.length === 0 ? (
+                  <div className="p-6 text-sm text-gray-500">No recent payments found.</div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {summary.recent_payments.map((payment, index) => (
+                      <motion.div
+                        key={payment.payment_id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.15 + index * 0.05 }}
+                        className="p-4 transition-colors hover:bg-gray-50"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100">
+                            <DollarSign className="h-5 w-5 text-purple-600" />
+                          </div>
+
+                          <div className="flex-1">
+                            <p className="font-semibold text-gray-900">{payment.student_name}</p>
+                            <p className="text-sm text-gray-600">
+                              {payment.student_code} | Receipt {payment.receipt_number}
+                            </p>
+                            {isSuperAdmin && (
+                              <p className="text-xs text-gray-500">{payment.branch_name}</p>
+                            )}
+                          </div>
+
+                          <div className="text-right">
+                            <p className="font-bold text-purple-700">
+                              {formatCurrency(payment.amount)}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {formatDateTime(payment.payment_date)}
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+
+              <Card noPadding>
+                <div className="border-b border-gray-100 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Attention Center</h3>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Renewals and attendance warnings that need a response
+                      </p>
+                    </div>
+                    <Badge variant={summary.notifications.length > 0 ? 'warning' : 'success'}>
+                      {summary.notifications.length}
+                    </Badge>
+                  </div>
+                </div>
+
+                {summary.notifications.length === 0 ? (
+                  <div className="p-6 text-sm text-gray-500">
+                    No urgent alerts right now.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {summary.notifications.map((notification, index) => (
+                      <motion.div
+                        key={notification.id}
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.2 + index * 0.05 }}
+                        className="p-4 transition-colors hover:bg-gray-50"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`flex h-10 w-10 items-center justify-center rounded-xl ${notificationBadgeStyles(notification.severity)}`}
+                          >
+                            <BellRing className="h-5 w-5" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="font-semibold text-gray-900">{notification.title}</p>
+                              <Badge
+                                variant={
+                                  notification.severity === 'critical'
+                                    ? 'danger'
+                                    : notification.severity === 'warning'
+                                      ? 'warning'
+                                      : 'info'
+                                }
+                                size="sm"
+                              >
+                                {notification.severity}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 text-sm text-gray-600">
+                              {notification.description}
+                            </p>
+                            {isSuperAdmin && notification.branch_name && (
+                              <p className="mt-2 text-xs font-medium text-gray-500">
+                                {notification.branch_name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
+
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div className="lg:col-span-2">
                 <Card noPadding>
                   <div className="border-b border-gray-100 p-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-gray-900">Recent Payments</h3>
-                      <Badge variant="info">{summary.recent_payments.length}</Badge>
-                    </div>
-                  </div>
-
-                  {summary.recent_payments.length === 0 ? (
-                    <div className="p-6 text-sm text-gray-500">No recent payments found.</div>
-                  ) : (
-                    <div className="divide-y divide-gray-100">
-                      {summary.recent_payments.map((payment, index) => (
-                        <motion.div
-                          key={payment.payment_id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.15 + index * 0.05 }}
-                          className="p-4 transition-colors hover:bg-gray-50"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100">
-                              <DollarSign className="h-5 w-5 text-purple-600" />
-                            </div>
-
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-900">{payment.student_name}</p>
-                              <p className="text-sm text-gray-600">
-                                {payment.student_code} • Receipt {payment.receipt_number}
-                              </p>
-                              {isSuperAdmin && (
-                                <p className="text-xs text-gray-500">{payment.branch_name}</p>
-                              )}
-                            </div>
-
-                            <div className="text-right">
-                              <p className="font-bold text-purple-700">
-                                {formatCurrency(payment.amount)}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {formatDateTime(payment.payment_date)}
-                              </p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              <div>
-                <Card noPadding>
-                  <div className="border-b border-gray-100 p-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-gray-900">Currently Inside</h3>
-                      <Badge variant="success">{summary.students_inside.length}</Badge>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">Students Inside Now</h3>
+                        <p className="mt-1 text-sm text-gray-600">
+                          Live durations with plan-limit warnings
+                        </p>
+                      </div>
+                      <Badge variant="success">{summary.stats.currently_inside}</Badge>
                     </div>
                   </div>
 
@@ -234,31 +349,103 @@ export default function DashboardPage() {
                       {summary.students_inside.map((student, index) => (
                         <motion.div
                           key={student.attendance_id}
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.2 + index * 0.05 }}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.15 + index * 0.05 }}
                           className="p-4 transition-colors hover:bg-gray-50"
                         >
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100">
-                              <UserCheck className="h-5 w-5 text-green-600" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-900">{student.student_name}</p>
-                              <p className="text-sm text-gray-600">{student.student_code}</p>
-                              {isSuperAdmin && (
-                                <p className="text-xs text-gray-500">{student.branch_name}</p>
-                              )}
-                              <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
-                                <Clock className="h-3.5 w-3.5" />
-                                Entered {formatDateTime(student.entry_time)}
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100">
+                                <UserCheck className="h-5 w-5 text-green-600" />
                               </div>
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-gray-900">{student.student_name}</p>
+                                  <Badge
+                                    variant={
+                                      student.is_overtime
+                                        ? 'danger'
+                                        : student.is_near_limit
+                                          ? 'warning'
+                                          : 'success'
+                                    }
+                                    size="sm"
+                                  >
+                                    {student.is_overtime
+                                      ? 'Over Limit'
+                                      : student.is_near_limit
+                                        ? 'Near Limit'
+                                        : 'Inside'}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-gray-600">
+                                  {student.student_code} | {student.study_plan.replace('_', ' ')}
+                                </p>
+                                {isSuperAdmin && (
+                                  <p className="text-xs text-gray-500">{student.branch_name}</p>
+                                )}
+                                <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                                  <Clock className="h-3.5 w-3.5" />
+                                  Entered {formatDateTime(student.entry_time)}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2 text-sm text-gray-700 md:text-right">
+                              <p className="font-semibold text-gray-900">
+                                Live duration: {formatDuration(student.current_duration_minutes)}
+                              </p>
+                              {student.allowed_minutes != null ? (
+                                student.is_overtime ? (
+                                  <p className="text-red-600">
+                                    Overtime: {formatDuration(student.overtime_minutes)}
+                                  </p>
+                                ) : (
+                                  <p className="text-amber-700">
+                                    Remaining: {formatDuration(student.remaining_minutes ?? 0)}
+                                  </p>
+                                )
+                              ) : (
+                                <p className="text-gray-500">Unlimited plan</p>
+                              )}
                             </div>
                           </div>
                         </motion.div>
                       ))}
                     </div>
                   )}
+                </Card>
+              </div>
+
+              <div>
+                <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-100">
+                  <p className="text-sm font-medium text-amber-700">Renewal Snapshot</p>
+                  <div className="mt-4 space-y-3 text-sm text-amber-900">
+                    <div className="flex items-center justify-between">
+                      <span>Overdue</span>
+                      <span className="font-bold">{summary.payment_alerts.overdue_count}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Due Today</span>
+                      <span className="font-bold">{summary.payment_alerts.due_today_count}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Due In 7 Days</span>
+                      <span className="font-bold">{summary.payment_alerts.due_soon_count}</span>
+                    </div>
+                    <div className="border-t border-amber-200 pt-3">
+                      <p className="text-xs uppercase tracking-wide text-amber-700">
+                        Amount at risk
+                      </p>
+                      <p className="mt-1 text-2xl font-bold">
+                        {formatCurrency(
+                          summary.payment_alerts.overdue_amount +
+                            summary.payment_alerts.due_today_amount,
+                        )}
+                      </p>
+                    </div>
+                  </div>
                 </Card>
               </div>
             </div>
