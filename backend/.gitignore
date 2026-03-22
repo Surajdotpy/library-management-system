@@ -1,0 +1,119 @@
+# Generated .gitignore file for: Node, TypeScript, React, Next.js, Express, VSCode, Windows, npm, Vite, Webpack, PostgreSQL, GitHub Actions, Docker
+# Created with FOSSA's DevOps Tools
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.env
+.DS_Store
+dist/
+.cache/
+coverage/
+
+# TypeScript
+# Add TypeScript-specific ignores here
+
+# React
+node_modules/
+build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Next.js
+# Add Next.js-specific ignores here
+
+# Express
+# Add Express-specific ignores here
+
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Windows
+# Add Windows-specific ignores here
+
+# npm
+# Add npm-specific ignores here
+
+# Vite
+# Add Vite-specific ignores here
+
+# Webpack
+# Add Webpack-specific ignores here
+
+# PostgreSQL
+# Add PostgreSQL-specific ignores here
+
+# GitHub Actions
+# Add GitHub Actions-specific ignores here
+
+# Docker
+docker-compose.override.yml
+Dockerfile.override
+.dockerignore
+
+# Common
+.DS_Store
+Thumbs.db
+*.log
+*.bak
+*.tmp
+*.swp
+*~
+
+# IDE and editor generated files
+.idea/
+*.sublime-*
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+
+# ignore local planning and shared packages
+docs/
+packages/
+
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment
+.env
+.env.test
+.env.production
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__/
+tests/
+coverage/
+
+# TypeScript compiled
+*.js
+*.js.map
+*.d.ts
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

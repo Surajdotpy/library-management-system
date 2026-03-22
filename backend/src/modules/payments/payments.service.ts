@@ -2,11 +2,23 @@ import pool from '../../config/db.ts';
 import type {
   Payment,
   PaymentAlertSummary,
+  PaymentCommunication,
+  PaymentCommunicationQueryOptions,
+  PaymentCommunicationRequestChannel,
+  PaymentReminderBatchResult,
+  PaymentReminderStage,
   PaymentWithStudent,
   PendingPayment,
   RecordPaymentDTO,
   MonthlyRevenue,
+  ReceiptData,
 } from './payments.types.ts';
+import {
+  buildReceiptMessage,
+  buildReminderMessage,
+  dispatchPaymentCommunication,
+  resolveRequestedChannels,
+} from './payments.communication.ts';
 
 const PAYMENT_CYCLE_DAYS = 30;
 const PAYMENT_CYCLE_END_OFFSET = PAYMENT_CYCLE_DAYS - 1;
@@ -26,6 +38,28 @@ interface StudentPaymentSnapshot {
   paid_through_date: string | null;
   last_paid_fee_month: number | null;
   last_paid_fee_year: number | null;
+}
+
+interface StudentPaymentRecord {
+  id: number;
+  name: string;
+  student_code: string;
+  email: string | null;
+  phone: string;
+  branch_id: number;
+  branch_name: string;
+  monthly_fee: string | number;
+}
+
+interface LatestReminderSnapshot {
+  student_id: number;
+  sent_at: Date;
+  channel: 'sms' | 'whatsapp';
+  reminder_stage: PaymentReminderStage;
+}
+
+interface PaymentCommunicationRow extends PaymentCommunication {
+  receipt_snapshot: ReceiptData | null;
 }
 
 function parseDateOnly(value: string): Date {
@@ -50,6 +84,32 @@ function diffDays(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+async function getLatestReminderMap(
+  studentIds: number[],
+): Promise<Map<number, LatestReminderSnapshot>> {
+  if (studentIds.length === 0) {
+    return new Map();
+  }
+
+  const result = await pool.query<LatestReminderSnapshot>(
+    `
+      SELECT DISTINCT ON (student_id)
+        student_id,
+        sent_at,
+        channel,
+        reminder_stage
+      FROM payment_communications
+      WHERE communication_type = 'fee_reminder'
+        AND reminder_stage IS NOT NULL
+        AND student_id = ANY($1)
+      ORDER BY student_id, sent_at DESC, id DESC
+    `,
+    [studentIds],
+  );
+
+  return new Map(result.rows.map((row) => [row.student_id, row]));
+}
+
 function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): PendingPayment {
   const registrationDate = parseDateOnly(snapshot.registration_date);
   const paidThroughDate = snapshot.paid_through_date
@@ -63,12 +123,20 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
       : daysUntilDue === 0
         ? 'due_today'
         : daysUntilDue <= DUE_SOON_WINDOW_DAYS
-          ? 'due_soon'
-          : 'current';
+        ? 'due_soon'
+        : 'current';
 
   const pendingCycles =
     daysUntilDue <= 0 ? Math.floor(Math.abs(daysUntilDue) / PAYMENT_CYCLE_DAYS) + 1 : 0;
   const monthlyFee = Number.parseFloat(String(snapshot.monthly_fee));
+  const recommendedReminderStage =
+    dueStatus === 'overdue'
+      ? 'overdue'
+      : dueStatus === 'due_today'
+        ? 'due_today'
+        : daysUntilDue <= 3
+          ? 'before_3_days'
+          : null;
 
   return {
     student_id: snapshot.student_id,
@@ -89,6 +157,10 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
     renewal_amount: monthlyFee,
     last_paid_fee_month: snapshot.last_paid_fee_month,
     last_paid_fee_year: snapshot.last_paid_fee_year,
+    recommended_reminder_stage: recommendedReminderStage,
+    last_reminder_at: null,
+    last_reminder_channel: null,
+    last_reminder_stage: null,
   };
 }
 
@@ -145,8 +217,25 @@ async function getStudentPaymentSnapshots(branchId?: number): Promise<PendingPay
   ]);
 
   const today = parseDateOnly(todayString);
+  const pendingPayments = snapshotResult.rows.map((row) => buildPendingPayment(today, row));
+  const reminderMap = await getLatestReminderMap(
+    pendingPayments.map((item) => item.student_id),
+  );
 
-  return snapshotResult.rows.map((row) => buildPendingPayment(today, row));
+  return pendingPayments.map((item) => {
+    const latestReminder = reminderMap.get(item.student_id);
+
+    if (!latestReminder) {
+      return item;
+    }
+
+    return {
+      ...item,
+      last_reminder_at: latestReminder.sent_at,
+      last_reminder_channel: latestReminder.channel,
+      last_reminder_stage: latestReminder.reminder_stage,
+    };
+  });
 }
 
 function buildPaymentAlertSummary(statuses: PendingPayment[]): PaymentAlertSummary {
@@ -179,6 +268,199 @@ function buildPaymentAlertSummary(statuses: PendingPayment[]): PaymentAlertSumma
   };
 }
 
+async function hasReminderBeenSentToday(
+  studentId: number,
+  stage: PaymentReminderStage,
+  channel: 'sms' | 'whatsapp',
+): Promise<boolean> {
+  const result = await pool.query<{ id: number }>(
+    `
+      SELECT id
+      FROM payment_communications
+      WHERE student_id = $1
+        AND communication_type = 'fee_reminder'
+        AND reminder_stage = $2
+        AND channel = $3
+        AND sent_at::date = CURRENT_DATE
+      LIMIT 1
+    `,
+    [studentId, stage, channel],
+  );
+
+  return result.rows.length > 0;
+}
+
+async function getPaymentWithDetailsById(
+  paymentId: number,
+  branchId?: number,
+): Promise<PaymentWithStudent | null> {
+  const params: Array<number | string> = [paymentId];
+  let query = `
+    SELECT
+      p.id,
+      p.payment_date,
+      p.coverage_start_date,
+      p.coverage_end_date,
+      p.amount,
+      p.fee_month,
+      p.fee_year,
+      p.payment_method,
+      p.transaction_id,
+      p.status,
+      p.receipt_number,
+      p.student_id,
+      s.name AS student_name,
+      s.student_id AS student_code,
+      s.email AS student_email,
+      s.phone AS student_phone,
+      s.branch_id,
+      b.name AS branch_name
+    FROM fee_payments p
+    JOIN students s ON p.student_id = s.id
+    JOIN branches b ON b.id = s.branch_id
+    WHERE p.id = $1
+  `;
+
+  if (branchId != null) {
+    params.push(branchId);
+    query += ` AND s.branch_id = $${params.length}`;
+  }
+
+  const result = await pool.query<PaymentWithStudent>(query, params);
+  return result.rows[0] ?? null;
+}
+
+function toReceiptSnapshot(payment: PaymentWithStudent): ReceiptData {
+  return {
+    receipt_number: payment.receipt_number,
+    student_name: payment.student_name,
+    student_code: payment.student_code,
+    student_email: payment.student_email,
+    student_phone: payment.student_phone,
+    amount: payment.amount,
+    payment_date: payment.payment_date,
+    coverage_start_date: payment.coverage_start_date,
+    coverage_end_date: payment.coverage_end_date,
+    fee_month: payment.fee_month,
+    fee_year: payment.fee_year,
+    payment_method: payment.payment_method,
+    transaction_id: payment.transaction_id,
+  };
+}
+
+async function insertCommunicationLog(input: {
+  studentId: number;
+  paymentId: number | null;
+  branchId: number;
+  communicationType: 'fee_reminder' | 'payment_receipt';
+  reminderStage: PaymentReminderStage | null;
+  channel: 'sms' | 'whatsapp';
+  deliveryStatus: 'logged' | 'sent' | 'failed';
+  deliveryMode: 'log_only' | 'webhook' | 'provider';
+  providerName: string | null;
+  externalMessageId: string | null;
+  recipientPhone: string;
+  recipientEmail: string | null;
+  subject: string | null;
+  messageBody: string;
+  receiptSnapshot: ReceiptData | null;
+  sentBy: number | null;
+}): Promise<PaymentCommunication> {
+  const result = await pool.query<PaymentCommunicationRow>(
+    `
+      INSERT INTO payment_communications (
+        student_id,
+        payment_id,
+        branch_id,
+        communication_type,
+        reminder_stage,
+        channel,
+        delivery_status,
+        delivery_mode,
+        provider_name,
+        external_message_id,
+        recipient_phone,
+        recipient_email,
+        subject,
+        message_body,
+        receipt_snapshot,
+        sent_by,
+        sent_at
+      ) VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14,
+        $15,
+        $16,
+        NOW()
+      )
+      RETURNING
+        id,
+        student_id,
+        payment_id,
+        branch_id,
+        communication_type,
+        reminder_stage,
+        channel,
+        delivery_status,
+        delivery_mode,
+        provider_name,
+        external_message_id,
+        recipient_phone,
+        recipient_email,
+        subject,
+        message_body,
+        receipt_snapshot,
+        sent_by,
+        sent_at,
+        created_at,
+        updated_at
+    `,
+    [
+      input.studentId,
+      input.paymentId,
+      input.branchId,
+      input.communicationType,
+      input.reminderStage,
+      input.channel,
+      input.deliveryStatus,
+      input.deliveryMode,
+      input.providerName,
+      input.externalMessageId,
+      input.recipientPhone,
+      input.recipientEmail,
+      input.subject,
+      input.messageBody,
+      input.receiptSnapshot ? JSON.stringify(input.receiptSnapshot) : null,
+      input.sentBy,
+    ],
+  );
+
+  const communication = result.rows[0];
+
+  if (!communication) {
+    throw new Error('Communication log entry was not returned after creation');
+  }
+
+  return {
+    ...communication,
+    student_name: '',
+    student_code: '',
+    receipt_number: input.receiptSnapshot?.receipt_number ?? null,
+  };
+}
+
 // Record a new payment
 export async function recordPayment(
   data: RecordPaymentDTO,
@@ -192,22 +474,28 @@ export async function recordPayment(
 
     const studentParams: number[] = [data.student_id];
     let studentQuery = `
-      SELECT id, monthly_fee
-      FROM students
-      WHERE id = $1 AND is_active = true
+      SELECT
+        s.id,
+        s.name,
+        s.student_id AS student_code,
+        s.email,
+        s.phone,
+        s.branch_id,
+        b.name AS branch_name,
+        s.monthly_fee
+      FROM students s
+      JOIN branches b ON b.id = s.branch_id
+      WHERE s.id = $1 AND s.is_active = true
     `;
 
     if (branchId != null) {
       studentParams.push(branchId);
-      studentQuery += ` AND branch_id = $${studentParams.length}`;
+      studentQuery += ` AND s.branch_id = $${studentParams.length}`;
     }
 
     studentQuery += ' FOR UPDATE';
 
-    const studentResult = await client.query<{
-      id: number;
-      monthly_fee: string | number;
-    }>(studentQuery, studentParams);
+    const studentResult = await client.query<StudentPaymentRecord>(studentQuery, studentParams);
 
     if (studentResult.rows.length === 0) {
       throw new Error('Student not found or inactive');
@@ -319,6 +607,13 @@ export async function recordPayment(
     }
 
     await client.query('COMMIT');
+
+    try {
+      await sendPaymentReceipt(createdPayment.id, collectedBy, branchId, 'both');
+    } catch (communicationError) {
+      console.error('Automatic payment receipt logging failed:', communicationError);
+    }
+
     return createdPayment;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -378,9 +673,12 @@ export async function getAllPayments(
       s.name as student_name,
       s.student_id as student_code,
       s.email as student_email,
-      s.phone as student_phone
+      s.phone as student_phone,
+      s.branch_id,
+      b.name as branch_name
     FROM fee_payments p
     JOIN students s ON p.student_id = s.id
+    JOIN branches b ON s.branch_id = b.id
     WHERE 1=1
   `;
 
@@ -426,6 +724,299 @@ export async function getPendingPayments(branchId?: number): Promise<PendingPaym
 export async function getPaymentAlertSummary(branchId?: number): Promise<PaymentAlertSummary> {
   const statuses = await getStudentPaymentSnapshots(branchId);
   return buildPaymentAlertSummary(statuses);
+}
+
+export async function getPaymentCommunicationHistory(
+  options: PaymentCommunicationQueryOptions = {},
+  branchId?: number,
+): Promise<PaymentCommunication[]> {
+  const params: Array<number | string> = [];
+  let query = `
+    SELECT
+      c.id,
+      c.student_id,
+      c.payment_id,
+      c.branch_id,
+      c.communication_type,
+      c.reminder_stage,
+      c.channel,
+      c.delivery_status,
+      c.delivery_mode,
+      c.provider_name,
+      c.external_message_id,
+      c.recipient_phone,
+      c.recipient_email,
+      c.subject,
+      c.message_body,
+      c.receipt_snapshot,
+      c.sent_by,
+      c.sent_at,
+      c.created_at,
+      c.updated_at,
+      s.name AS student_name,
+      s.student_id AS student_code,
+      p.receipt_number
+    FROM payment_communications c
+    JOIN students s ON s.id = c.student_id
+    LEFT JOIN fee_payments p ON p.id = c.payment_id
+    WHERE 1 = 1
+  `;
+
+  if (branchId != null) {
+    params.push(branchId);
+    query += ` AND c.branch_id = $${params.length}`;
+  }
+
+  if (options.student_id != null) {
+    params.push(options.student_id);
+    query += ` AND c.student_id = $${params.length}`;
+  }
+
+  if (options.payment_id != null) {
+    params.push(options.payment_id);
+    query += ` AND c.payment_id = $${params.length}`;
+  }
+
+  const limit = Math.min(options.limit ?? 50, 200);
+  params.push(limit);
+  query += ` ORDER BY c.sent_at DESC, c.id DESC LIMIT $${params.length}`;
+
+  const result = await pool.query<PaymentCommunicationRow>(query, params);
+  return result.rows;
+}
+
+export async function sendPaymentReminder(
+  studentId: number,
+  sentBy: number,
+  branchId?: number,
+  requestedChannel: PaymentCommunicationRequestChannel = 'both',
+): Promise<PaymentCommunication[]> {
+  const pendingPayment = (await getStudentPaymentSnapshots(branchId)).find(
+    (item) => item.student_id === studentId,
+  );
+
+  if (!pendingPayment) {
+    throw new Error('Student not found or not accessible');
+  }
+
+  const reminder = buildReminderMessage(pendingPayment);
+  const channels = resolveRequestedChannels(requestedChannel);
+  const eligibleChannels: Array<'sms' | 'whatsapp'> = [];
+
+  for (const channel of channels) {
+    const alreadySent = await hasReminderBeenSentToday(
+      pendingPayment.student_id,
+      reminder.stage,
+      channel,
+    );
+
+    if (!alreadySent) {
+      eligibleChannels.push(channel);
+    }
+  }
+
+  if (eligibleChannels.length === 0) {
+    throw new Error('Reminder already sent today for the selected channels');
+  }
+
+  const communications: PaymentCommunication[] = [];
+
+  for (const channel of eligibleChannels) {
+    const dispatchResult = await dispatchPaymentCommunication({
+      channel,
+      recipientPhone: pendingPayment.student_phone,
+      recipientEmail: pendingPayment.student_email,
+      subject: reminder.subject,
+      messageBody: reminder.messageBody,
+      metadata: {
+        communication_type: 'fee_reminder',
+        reminder_stage: reminder.stage,
+        student_id: pendingPayment.student_id,
+        student_code: pendingPayment.student_code,
+        next_due_date: formatDateOnly(pendingPayment.next_due_date),
+      },
+    });
+
+    const communication = await insertCommunicationLog({
+      studentId: pendingPayment.student_id,
+      paymentId: null,
+      branchId: pendingPayment.branch_id,
+      communicationType: 'fee_reminder',
+      reminderStage: reminder.stage,
+      channel,
+      deliveryStatus: dispatchResult.deliveryStatus,
+      deliveryMode: dispatchResult.deliveryMode,
+      providerName: dispatchResult.providerName,
+      externalMessageId: dispatchResult.externalMessageId,
+      recipientPhone: pendingPayment.student_phone,
+      recipientEmail: pendingPayment.student_email,
+      subject: reminder.subject,
+      messageBody: reminder.messageBody,
+      receiptSnapshot: null,
+      sentBy,
+    });
+
+    communications.push({
+      ...communication,
+      student_name: pendingPayment.student_name,
+      student_code: pendingPayment.student_code,
+      receipt_number: null,
+    });
+  }
+
+  return communications;
+}
+
+export async function runReminderBatch(
+  sentBy: number,
+  branchId?: number,
+  requestedChannel: PaymentCommunicationRequestChannel = 'both',
+): Promise<PaymentReminderBatchResult> {
+  const watchlist = (await getStudentPaymentSnapshots(branchId)).filter(
+    (item) => item.recommended_reminder_stage != null,
+  );
+
+  const channels = resolveRequestedChannels(requestedChannel);
+  const communications: PaymentCommunication[] = [];
+  let skipped = 0;
+
+  for (const pendingPayment of watchlist) {
+    const reminder = buildReminderMessage(pendingPayment);
+    const eligibleChannels: Array<'sms' | 'whatsapp'> = [];
+
+    for (const channel of channels) {
+      const alreadySent = await hasReminderBeenSentToday(
+        pendingPayment.student_id,
+        reminder.stage,
+        channel,
+      );
+
+      if (alreadySent) {
+        skipped += 1;
+        continue;
+      }
+
+      eligibleChannels.push(channel);
+    }
+
+    for (const channel of eligibleChannels) {
+      const dispatchResult = await dispatchPaymentCommunication({
+        channel,
+        recipientPhone: pendingPayment.student_phone,
+        recipientEmail: pendingPayment.student_email,
+        subject: reminder.subject,
+        messageBody: reminder.messageBody,
+        metadata: {
+          communication_type: 'fee_reminder',
+          reminder_stage: reminder.stage,
+          student_id: pendingPayment.student_id,
+          student_code: pendingPayment.student_code,
+          next_due_date: formatDateOnly(pendingPayment.next_due_date),
+        },
+      });
+
+      const communication = await insertCommunicationLog({
+        studentId: pendingPayment.student_id,
+        paymentId: null,
+        branchId: pendingPayment.branch_id,
+        communicationType: 'fee_reminder',
+        reminderStage: reminder.stage,
+        channel,
+        deliveryStatus: dispatchResult.deliveryStatus,
+        deliveryMode: dispatchResult.deliveryMode,
+        providerName: dispatchResult.providerName,
+        externalMessageId: dispatchResult.externalMessageId,
+        recipientPhone: pendingPayment.student_phone,
+        recipientEmail: pendingPayment.student_email,
+        subject: reminder.subject,
+        messageBody: reminder.messageBody,
+        receiptSnapshot: null,
+        sentBy,
+      });
+
+      communications.push({
+        ...communication,
+        student_name: pendingPayment.student_name,
+        student_code: pendingPayment.student_code,
+        receipt_number: null,
+      });
+    }
+  }
+
+  return {
+    attempted: watchlist.length,
+    sent: communications.length,
+    skipped,
+    communications,
+  };
+}
+
+export async function sendPaymentReceipt(
+  paymentId: number,
+  sentBy: number,
+  branchId?: number,
+  requestedChannel: PaymentCommunicationRequestChannel = 'both',
+): Promise<PaymentCommunication[]> {
+  const payment = await getPaymentWithDetailsById(paymentId, branchId);
+
+  if (!payment) {
+    throw new Error('Payment not found');
+  }
+
+  const receiptSnapshot = toReceiptSnapshot(payment);
+  const receipt = buildReceiptMessage(receiptSnapshot);
+  const channels = resolveRequestedChannels(requestedChannel);
+  const communications: PaymentCommunication[] = [];
+  const paymentBranchId = payment.branch_id;
+
+  if (paymentBranchId == null) {
+    throw new Error('Payment branch details are missing');
+  }
+
+  for (const channel of channels) {
+    const dispatchResult = await dispatchPaymentCommunication({
+      channel,
+      recipientPhone: payment.student_phone,
+      recipientEmail: payment.student_email,
+      subject: receipt.subject,
+      messageBody: receipt.messageBody,
+      metadata: {
+        communication_type: 'payment_receipt',
+        payment_id: payment.id,
+        receipt_number: payment.receipt_number,
+        student_id: payment.student_id,
+        student_code: payment.student_code,
+      },
+    });
+
+    const communication = await insertCommunicationLog({
+      studentId: payment.student_id,
+      paymentId: payment.id,
+      branchId: paymentBranchId,
+      communicationType: 'payment_receipt',
+      reminderStage: null,
+      channel,
+      deliveryStatus: dispatchResult.deliveryStatus,
+      deliveryMode: dispatchResult.deliveryMode,
+      providerName: dispatchResult.providerName,
+      externalMessageId: dispatchResult.externalMessageId,
+      recipientPhone: payment.student_phone,
+      recipientEmail: payment.student_email,
+      subject: receipt.subject,
+      messageBody: receipt.messageBody,
+      receiptSnapshot,
+      sentBy,
+    });
+
+    communications.push({
+      ...communication,
+      student_name: payment.student_name,
+      student_code: payment.student_code,
+      receipt_number: payment.receipt_number,
+    });
+  }
+
+  return communications;
 }
 
 // Get monthly revenue report
@@ -520,9 +1111,12 @@ export async function getPaymentByReceiptNumber(
       s.name as student_name,
       s.student_id as student_code,
       s.email as student_email,
-      s.phone as student_phone
+      s.phone as student_phone,
+      s.branch_id,
+      b.name as branch_name
     FROM fee_payments p
     JOIN students s ON p.student_id = s.id
+    JOIN branches b ON s.branch_id = b.id
     WHERE p.receipt_number = $1
   `;
 
