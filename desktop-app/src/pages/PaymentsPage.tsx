@@ -19,6 +19,7 @@ import { getStoredUser } from '@/lib/auth/session';
 import { paymentsApi, studentsApi } from '@/lib/api';
 import type {
   MonthlyRevenue,
+  PaymentCommunication,
   Payment,
   PendingPayment,
   RecordPaymentRequest,
@@ -41,6 +42,20 @@ function formatDate(value: string | Date | null): string {
   });
 }
 
+function formatDateTime(value: string | Date | null): string {
+  if (!value) {
+    return '-';
+  }
+
+  return new Date(value).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function formatDateRange(startDate: string, endDate: string): string {
   return `${formatDate(startDate)} - ${formatDate(endDate)}`;
 }
@@ -51,7 +66,7 @@ function addDays(baseDate: Date, days: number): Date {
   return nextDate;
 }
 
-function getRenewalVariant(status: PendingPayment['due_status']) {
+function getRenewalVariant(status: PendingPayment['due_status']): 'danger' | 'warning' | 'info' | 'success' {
   if (status === 'overdue') return 'danger';
   if (status === 'due_today') return 'warning';
   if (status === 'due_soon') return 'info';
@@ -63,6 +78,66 @@ function getRenewalLabel(status: PendingPayment['due_status']) {
   if (status === 'due_today') return 'Due Today';
   if (status === 'due_soon') return 'Due Soon';
   return 'Current';
+}
+
+function getReminderStageLabel(stage: PendingPayment['recommended_reminder_stage']) {
+  if (stage === 'before_3_days') return '3 Days Before Due';
+  if (stage === 'due_today') return 'Due Today';
+  if (stage === 'overdue') return 'Overdue';
+  return 'Not Ready';
+}
+
+function getReminderStageVariant(
+  stage: PendingPayment['recommended_reminder_stage'],
+): 'danger' | 'warning' | 'info' | 'default' {
+  if (stage === 'overdue') return 'danger';
+  if (stage === 'due_today') return 'warning';
+  if (stage === 'before_3_days') return 'info';
+  return 'default';
+}
+
+function getCommunicationStatusVariant(
+  status: PaymentCommunication['delivery_status'],
+): 'success' | 'danger' | 'info' {
+  if (status === 'sent') return 'success';
+  if (status === 'failed') return 'danger';
+  return 'info';
+}
+
+function getCommunicationStatusLabel(communication: PaymentCommunication) {
+  if (communication.delivery_status === 'logged' && communication.delivery_mode === 'log_only') {
+    return 'Logged';
+  }
+
+  if (communication.delivery_status === 'sent') {
+    return 'Sent';
+  }
+
+  if (communication.delivery_status === 'failed') {
+    return 'Failed';
+  }
+
+  return communication.delivery_status;
+}
+
+function getCommunicationTypeLabel(communication: PaymentCommunication) {
+  if (communication.communication_type === 'payment_receipt') {
+    return 'Receipt';
+  }
+
+  if (communication.reminder_stage === 'before_3_days') {
+    return '3-Day Reminder';
+  }
+
+  if (communication.reminder_stage === 'due_today') {
+    return 'Due Today Reminder';
+  }
+
+  if (communication.reminder_stage === 'overdue') {
+    return 'Overdue Reminder';
+  }
+
+  return 'Fee Reminder';
 }
 
 export default function PaymentsPage() {
@@ -77,6 +152,7 @@ export default function PaymentsPage() {
   const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
   const [currentMonthPayments, setCurrentMonthPayments] = useState<Payment[]>([]);
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
+  const [communicationHistory, setCommunicationHistory] = useState<PaymentCommunication[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue | null>(null);
   const [selectedStudentPayments, setSelectedStudentPayments] = useState<Payment[]>([]);
   const [selectedStudentPaymentsLoading, setSelectedStudentPaymentsLoading] = useState(false);
@@ -85,6 +161,9 @@ export default function PaymentsPage() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
+  const [communicationError, setCommunicationError] = useState<string | null>(null);
+  const [communicationSuccess, setCommunicationSuccess] = useState<string | null>(null);
+  const [communicationActionKey, setCommunicationActionKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentForm, setPaymentForm] = useState<RecordPaymentRequest>({
     student_id: 0,
@@ -94,12 +173,22 @@ export default function PaymentsPage() {
     notes: '',
   });
 
-  const fetchPaymentsData = async () => {
-    setLoading(true);
+  const fetchPaymentsData = async (showLoader: boolean = true) => {
+    if (showLoader) {
+      setLoading(true);
+    }
+
     setError(null);
 
     try {
-      const [studentData, latestPayments, monthlyPayments, pendingData, revenueData] =
+      const [
+        studentData,
+        latestPayments,
+        monthlyPayments,
+        pendingData,
+        communicationData,
+        revenueData,
+      ] =
         await Promise.all([
           studentsApi.getAll(),
           paymentsApi.getAll({ limit: 25 }),
@@ -109,6 +198,7 @@ export default function PaymentsPage() {
             limit: 500,
           }),
           paymentsApi.getPending(),
+          paymentsApi.getCommunications({ limit: 40 }),
           paymentsApi.getMonthlyRevenue(currentDate.getFullYear(), currentDate.getMonth() + 1),
         ]);
 
@@ -116,12 +206,15 @@ export default function PaymentsPage() {
       setRecentPayments(latestPayments);
       setCurrentMonthPayments(monthlyPayments);
       setPendingPayments(pendingData);
+      setCommunicationHistory(communicationData);
       setMonthlyRevenue(revenueData);
     } catch (err: any) {
       console.error('Failed to load payments page data.', err);
       setError(err.response?.data?.error || 'Failed to load payments data');
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   };
 
@@ -310,7 +403,9 @@ export default function PaymentsPage() {
         notes: paymentForm.notes?.trim() || undefined,
       });
 
-      setPaymentSuccess('Payment recorded successfully. The student coverage has been renewed for 30 days.');
+      setPaymentSuccess(
+        'Payment recorded successfully. The student coverage has been renewed for 30 days and receipt delivery was saved in communication history.',
+      );
       setPaymentForm({
         student_id: 0,
         amount: 0,
@@ -320,12 +415,87 @@ export default function PaymentsPage() {
       });
       setSelectedStudentPayments([]);
 
-      await fetchPaymentsData();
+      await fetchPaymentsData(false);
     } catch (err: any) {
       console.error('Failed to record payment.', err);
       setPaymentError(err.response?.data?.error || 'Failed to record payment');
     } finally {
       setPaymentLoading(false);
+    }
+  };
+
+  const handleSendReminder = async (payment: PendingPayment) => {
+    if (!payment.recommended_reminder_stage) {
+      setCommunicationError(
+        `Automatic reminders start 3 days before due. ${payment.student_name} is not in that window yet.`,
+      );
+      setCommunicationSuccess(null);
+      return;
+    }
+
+    setCommunicationActionKey(`reminder-${payment.student_id}`);
+    setCommunicationError(null);
+    setCommunicationSuccess(null);
+
+    try {
+      const communications = await paymentsApi.sendReminder({
+        student_id: payment.student_id,
+        channel: 'both',
+      });
+
+      const channelSummary = communications.map((item) => item.channel.toUpperCase()).join(' + ');
+      setCommunicationSuccess(
+        `Reminder saved for ${payment.student_name} on ${channelSummary}.`,
+      );
+      await fetchPaymentsData(false);
+    } catch (err: any) {
+      console.error('Failed to send reminder.', err);
+      setCommunicationError(err.response?.data?.error || 'Failed to send reminder');
+    } finally {
+      setCommunicationActionKey(null);
+    }
+  };
+
+  const handleRunReminderBatch = async () => {
+    setCommunicationActionKey('batch-reminders');
+    setCommunicationError(null);
+    setCommunicationSuccess(null);
+
+    try {
+      const result = await paymentsApi.runReminderBatch('both');
+
+      setCommunicationSuccess(
+        `Reminder batch processed. ${result.sent} communication log entr${result.sent === 1 ? 'y' : 'ies'} created, ${result.skipped} skipped because they were already sent today.`,
+      );
+      await fetchPaymentsData(false);
+    } catch (err: any) {
+      console.error('Failed to run reminder batch.', err);
+      setCommunicationError(err.response?.data?.error || 'Failed to run reminder batch');
+    } finally {
+      setCommunicationActionKey(null);
+    }
+  };
+
+  const handleSendReceipt = async (payment: Payment) => {
+    setCommunicationActionKey(`receipt-${payment.id}`);
+    setCommunicationError(null);
+    setCommunicationSuccess(null);
+
+    try {
+      const communications = await paymentsApi.sendReceipt(payment.id, {
+        channel: 'both',
+      });
+
+      const channelSummary = communications.map((item) => item.channel.toUpperCase()).join(' + ');
+      setCommunicationSuccess(
+        `Receipt resent for ${payment.student_name || payment.student_code || `Student #${payment.student_id}`} on ${channelSummary}.`,
+      );
+      await fetchPaymentsData(false);
+    } catch (err: any) {
+      console.error('Failed to resend receipt.', err);
+      setCommunicationError(err.response?.data?.error || 'Failed to resend receipt');
+    } finally {
+      setCommunicationActionKey(null);
     }
   };
 
@@ -353,9 +523,19 @@ export default function PaymentsPage() {
             </Badge>
             <Button
               type="button"
+              variant="primary"
+              onClick={() => void handleRunReminderBatch()}
+              disabled={loading || paymentLoading || communicationActionKey === 'batch-reminders'}
+              isLoading={communicationActionKey === 'batch-reminders'}
+              className="flex items-center gap-2"
+            >
+              Send Due Reminders
+            </Button>
+            <Button
+              type="button"
               variant="secondary"
               onClick={() => void fetchPaymentsData()}
-              disabled={loading || paymentLoading}
+              disabled={loading || paymentLoading || communicationActionKey != null}
               className="flex items-center gap-2"
             >
               <RefreshCcw className="h-4 w-4" />
@@ -386,6 +566,20 @@ export default function PaymentsPage() {
               <Button type="button" variant="secondary" onClick={() => void fetchPaymentsData()}>
                 Retry
               </Button>
+            </div>
+          </Card>
+        )}
+
+        {(communicationSuccess || communicationError) && (
+          <Card>
+            <div
+              className={`rounded-xl border p-4 text-sm ${
+                communicationError
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-green-200 bg-green-50 text-green-700'
+              }`}
+            >
+              {communicationError || communicationSuccess}
             </div>
           </Card>
         )}
@@ -711,13 +905,52 @@ export default function PaymentsPage() {
                                   : formatCurrency(payment.total_pending)}
                               </td>
                               <td className="px-6 py-4">
-                                <button
-                                  type="button"
-                                  onClick={() => selectStudentForPayment(payment.student_id)}
-                                  className="font-medium text-purple-600 transition-colors hover:text-purple-700"
-                                >
-                                  Pay Now
-                                </button>
+                                <div className="space-y-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => selectStudentForPayment(payment.student_id)}
+                                    className="font-medium text-purple-600 transition-colors hover:text-purple-700"
+                                  >
+                                    Pay Now
+                                  </button>
+                                  <div>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleSendReminder(payment)}
+                                      disabled={
+                                        !payment.recommended_reminder_stage ||
+                                        communicationActionKey === `reminder-${payment.student_id}`
+                                      }
+                                      className={`font-medium transition-colors ${
+                                        !payment.recommended_reminder_stage
+                                          ? 'cursor-not-allowed text-gray-400'
+                                          : 'text-sky-600 hover:text-sky-700'
+                                      }`}
+                                    >
+                                      {communicationActionKey === `reminder-${payment.student_id}`
+                                        ? 'Sending...'
+                                        : payment.recommended_reminder_stage
+                                          ? 'Send Reminder'
+                                          : 'Starts 3 days before'}
+                                    </button>
+                                  </div>
+                                  {payment.recommended_reminder_stage && (
+                                    <Badge
+                                      variant={getReminderStageVariant(
+                                        payment.recommended_reminder_stage,
+                                      )}
+                                      size="sm"
+                                    >
+                                      {getReminderStageLabel(payment.recommended_reminder_stage)}
+                                    </Badge>
+                                  )}
+                                  {payment.last_reminder_at && (
+                                    <p className="text-xs text-gray-500">
+                                      Last reminder: {formatDateTime(payment.last_reminder_at)} via{' '}
+                                      {payment.last_reminder_channel?.toUpperCase()}
+                                    </p>
+                                  )}
+                                </div>
                               </td>
                             </motion.tr>
                           ))}
@@ -771,6 +1004,9 @@ export default function PaymentsPage() {
                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                               Status
                             </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Actions
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -812,6 +1048,155 @@ export default function PaymentsPage() {
                                   {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
                                 </Badge>
                               </td>
+                              <td className="px-6 py-4">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSendReceipt(payment)}
+                                  disabled={communicationActionKey === `receipt-${payment.id}`}
+                                  className={`font-medium transition-colors ${
+                                    communicationActionKey === `receipt-${payment.id}`
+                                      ? 'cursor-not-allowed text-gray-400'
+                                      : 'text-sky-600 hover:text-sky-700'
+                                  }`}
+                                >
+                                  {communicationActionKey === `receipt-${payment.id}`
+                                    ? 'Sending...'
+                                    : 'Resend Receipt'}
+                                </button>
+                              </td>
+                            </motion.tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+
+                <Card noPadding>
+                  <div className="border-b border-gray-100 p-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">
+                          Reminder & Receipt History
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-600">
+                          Every due reminder and payment receipt is stored here so admins can track
+                          what was sent for each month.
+                        </p>
+                      </div>
+                      <Badge variant="info">{communicationHistory.length}</Badge>
+                    </div>
+                  </div>
+
+                  {communicationHistory.length === 0 ? (
+                    <div className="p-10 text-center">
+                      <Receipt className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+                      <p className="font-semibold text-gray-900">No communication history yet</p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Fee reminders and payment receipts will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="border-b border-gray-200 bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Student
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Type
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Channel
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Status
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Sent On
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                              Details
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {communicationHistory.map((communication, index) => (
+                            <motion.tr
+                              key={communication.id}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.03 }}
+                              className="transition-colors hover:bg-gray-50"
+                            >
+                              <td className="px-6 py-4">
+                                <div>
+                                  <p className="font-semibold text-gray-900">
+                                    {communication.student_name}
+                                  </p>
+                                  <p className="text-sm text-gray-500">
+                                    {communication.student_code} | {communication.recipient_phone}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="space-y-1">
+                                  <Badge
+                                    variant={
+                                      communication.communication_type === 'payment_receipt'
+                                        ? 'success'
+                                        : communication.reminder_stage === 'overdue'
+                                          ? 'danger'
+                                          : communication.reminder_stage === 'due_today'
+                                            ? 'warning'
+                                            : 'info'
+                                    }
+                                  >
+                                    {getCommunicationTypeLabel(communication)}
+                                  </Badge>
+                                  {communication.receipt_number && (
+                                    <p className="text-xs text-gray-500">
+                                      Receipt {communication.receipt_number}
+                                    </p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-sm font-medium text-gray-700">
+                                {communication.channel.toUpperCase()}
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="space-y-1">
+                                  <Badge
+                                    variant={getCommunicationStatusVariant(
+                                      communication.delivery_status,
+                                    )}
+                                  >
+                                    {getCommunicationStatusLabel(communication)}
+                                  </Badge>
+                                  <p className="text-xs text-gray-500">
+                                    {communication.delivery_mode === 'log_only'
+                                      ? 'Stored in system history'
+                                      : communication.provider_name ||
+                                        (communication.delivery_mode === 'webhook'
+                                          ? 'Webhook'
+                                          : 'Provider')}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-600">
+                                {formatDateTime(communication.sent_at)}
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="max-w-xl space-y-1 text-sm text-gray-600">
+                                  {communication.subject && (
+                                    <p className="font-medium text-gray-900">
+                                      {communication.subject}
+                                    </p>
+                                  )}
+                                  <p>{communication.message_body}</p>
+                                </div>
+                              </td>
                             </motion.tr>
                           ))}
                         </tbody>
@@ -827,8 +1212,8 @@ export default function PaymentsPage() {
                       <p className="font-semibold text-blue-900">How renewals work now</p>
                       <p className="mt-1 text-sm text-blue-800">
                         Each payment extends the student by the next 30-day coverage cycle. The system now tracks
-                        active through and next due dates directly, so admins can see overdue, due today, and due soon
-                        renewals without guessing from a month label.
+                        active through and next due dates directly, stores every reminder and receipt in the database,
+                        and can send the 3-day, due-today, and overdue reminder set from this page.
                       </p>
                     </div>
                   </div>

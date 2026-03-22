@@ -37,11 +37,22 @@ export type {
   Payment,
   RecordPaymentRequest,
   PaymentDueStatus,
+  PaymentCommunicationType,
+  PaymentCommunicationChannel,
+  PaymentCommunicationRequestChannel,
+  PaymentReminderStage,
+  PaymentCommunicationStatus,
+  PaymentCommunicationDeliveryMode,
   PendingPayment,
   MonthlyRevenue,
   BranchRevenue,
   PaymentReceipt,
+  PaymentCommunication,
   PaymentQueryOptions,
+  PaymentCommunicationQueryOptions,
+  SendPaymentReminderRequest,
+  SendPaymentReceiptRequest,
+  PaymentReminderBatchResult,
 } from './payment.types';
 
 export type {

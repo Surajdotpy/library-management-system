@@ -1,12 +1,17 @@
 import apiClient from './client';
 import type {
   ApiResponse,
+  PaymentCommunication,
+  PaymentCommunicationQueryOptions,
+  PaymentReminderBatchResult,
   MonthlyRevenue,
   Payment,
   PaymentQueryOptions,
   PaymentReceipt,
   PendingPayment,
   RecordPaymentRequest,
+  SendPaymentReceiptRequest,
+  SendPaymentReminderRequest,
 } from '@/types';
 
 export const paymentsApi = {
@@ -42,6 +47,49 @@ export const paymentsApi = {
     return response.data.data || [];
   },
 
+  async getCommunications(
+    options: PaymentCommunicationQueryOptions = {},
+  ): Promise<PaymentCommunication[]> {
+    const response = await apiClient.get<ApiResponse<PaymentCommunication[]>>(
+      '/payments/communications',
+      {
+        params: {
+          student_id: options.student_id,
+          payment_id: options.payment_id,
+          limit: options.limit,
+        },
+      },
+    );
+
+    return response.data.data || [];
+  },
+
+  async sendReminder(
+    data: SendPaymentReminderRequest,
+  ): Promise<PaymentCommunication[]> {
+    const response = await apiClient.post<ApiResponse<PaymentCommunication[]>>(
+      '/payments/reminders/send',
+      data,
+    );
+
+    return response.data.data || [];
+  },
+
+  async runReminderBatch(
+    channel: SendPaymentReminderRequest['channel'] = 'both',
+  ): Promise<PaymentReminderBatchResult> {
+    const response = await apiClient.post<ApiResponse<PaymentReminderBatchResult>>(
+      '/payments/reminders/run-daily',
+      { channel },
+    );
+
+    if (!response.data.data) {
+      throw new Error('Failed to run reminder batch');
+    }
+
+    return response.data.data;
+  },
+
   async getMonthlyRevenue(year: number, month: number): Promise<MonthlyRevenue> {
     const response = await apiClient.get<ApiResponse<MonthlyRevenue>>(
       `/payments/revenue/${month}/${year}`,
@@ -64,5 +112,17 @@ export const paymentsApi = {
     }
 
     return response.data.data;
+  },
+
+  async sendReceipt(
+    paymentId: number,
+    data: SendPaymentReceiptRequest = {},
+  ): Promise<PaymentCommunication[]> {
+    const response = await apiClient.post<ApiResponse<PaymentCommunication[]>>(
+      `/payments/receipt/${paymentId}/send`,
+      data,
+    );
+
+    return response.data.data || [];
   },
 };
