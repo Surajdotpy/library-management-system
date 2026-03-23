@@ -1,10 +1,9 @@
-const { app, BrowserWindow, Menu, Tray, shell } = require('electron');
+const { app, BrowserWindow, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const isDev = require('electron-is-dev');
 
 let mainWindow;
-let tray;
 
 // Auto-updater configuration
 autoUpdater.autoDownload = false;
@@ -51,64 +50,13 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // Handle window close
-  mainWindow.on('close', (event) => {
-    if (!app.isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
-    }
+  // Handle window close - ACTUALLY CLOSE THE APP
+  mainWindow.on('close', () => {
+    // Just let it close normally
   });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-  });
-}
-
-function createTray() {
-  const trayIconPath = path.join(__dirname, '../public/tray-icon.png');
-  
-  // Check if icon exists, otherwise skip tray
-  const fs = require('fs');
-  if (!fs.existsSync(trayIconPath)) {
-    console.log('Tray icon not found, skipping tray creation');
-    return;
-  }
-
-  tray = new Tray(trayIconPath);
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Coffee aur Kitaab',
-      enabled: false,
-    },
-    { type: 'separator' },
-    {
-      label: 'Show App',
-      click: () => {
-        mainWindow.show();
-      },
-    },
-    {
-      label: 'Check for Updates',
-      click: () => {
-        checkForUpdates();
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      },
-    },
-  ]);
-
-  tray.setToolTip('Coffee aur Kitaab - Library Management');
-  tray.setContextMenu(contextMenu);
-
-  tray.on('double-click', () => {
-    mainWindow.show();
   });
 }
 
@@ -179,7 +127,6 @@ autoUpdater.on('error', (error) => {
 // App lifecycle
 app.whenReady().then(() => {
   createWindow();
-  createTray();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -189,13 +136,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('before-quit', () => {
-  app.isQuitting = true;
+  app.quit();
 });
 
 // Handle second instance

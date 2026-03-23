@@ -27,14 +27,14 @@
       "package.json"
     ],
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
-      "icon": "public/icon.png"
-    },
+  "target": [
+    {
+      "target": "nsis",
+      "arch": ["x64"]
+    }
+  ],
+  "icon": "public/icon.png"
+},
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
@@ -44,10 +44,10 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "YOUR_GITHUB_USERNAME",
+      "owner": "Surajdotpy",
       "repo": "coffee-aur-kitaab"
     }
-},
+  },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.90.21",
