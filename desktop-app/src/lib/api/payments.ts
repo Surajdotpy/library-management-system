@@ -1,6 +1,9 @@
 import apiClient from './client';
 import type {
   ApiResponse,
+  CashfreePaymentRequestResult,
+  ConfirmPaymentRequest,
+  CreateCashfreePaymentRequest,
   PaymentCommunication,
   PaymentCommunicationQueryOptions,
   PaymentReminderBatchResult,
@@ -20,6 +23,49 @@ export const paymentsApi = {
 
     if (!response.data.data) {
       throw new Error('Failed to record payment');
+    }
+
+    return response.data.data;
+  },
+
+  async confirm(
+    paymentId: number,
+    data: ConfirmPaymentRequest = {},
+  ): Promise<Payment> {
+    const response = await apiClient.post<ApiResponse<Payment>>(
+      `/payments/${paymentId}/confirm`,
+      data,
+    );
+
+    if (!response.data.data) {
+      throw new Error('Failed to confirm payment');
+    }
+
+    return response.data.data;
+  },
+
+  async createCashfreeRequest(
+    data: CreateCashfreePaymentRequest,
+  ): Promise<CashfreePaymentRequestResult> {
+    const response = await apiClient.post<ApiResponse<CashfreePaymentRequestResult>>(
+      '/payments/cashfree/request',
+      data,
+    );
+
+    if (!response.data.data) {
+      throw new Error('Failed to create Cashfree payment request');
+    }
+
+    return response.data.data;
+  },
+
+  async simulateCashfreeSuccess(paymentId: number): Promise<Payment> {
+    const response = await apiClient.post<ApiResponse<Payment>>(
+      `/payments/cashfree/mock-success/${paymentId}`,
+    );
+
+    if (!response.data.data) {
+      throw new Error('Failed to simulate Cashfree success');
     }
 
     return response.data.data;

@@ -1,3 +1,11 @@
+export type PaymentVerificationSource =
+  | 'legacy'
+  | 'manual_entry'
+  | 'superadmin_review'
+  | 'gateway_webhook';
+export type PaymentGatewayProvider = 'cashfree';
+export type PaymentGatewayMode = 'mock' | 'sandbox' | 'production';
+
 export interface Payment {
   id: number;
   student_id: number;
@@ -16,7 +24,19 @@ export interface Payment {
   payment_method: 'upi';
   transaction_id: string | null;
   status: 'paid' | 'pending' | 'failed' | 'refunded';
+  gateway_provider?: PaymentGatewayProvider | null;
+  gateway_mode?: PaymentGatewayMode | null;
+  gateway_session_id?: string | null;
+  gateway_cf_order_id?: string | null;
+  gateway_checkout_url?: string | null;
+  gateway_upi_intent?: string | null;
+  gateway_order_status?: string | null;
+  gateway_expires_at?: string | null;
   receipt_number: string;
+  verification_source: PaymentVerificationSource;
+  verification_reference: string | null;
+  verified_at: string | null;
+  verified_by: number | null;
   collected_by?: number;
   notes?: string | null;
   created_at?: string;
@@ -31,6 +51,34 @@ export interface RecordPaymentRequest {
   payment_method?: 'upi';
   transaction_id?: string;
   notes?: string;
+}
+
+export interface ConfirmPaymentRequest {
+  verification_reference?: string;
+  confirmed_at?: string;
+  amount?: number;
+}
+
+export interface CreateCashfreePaymentRequest {
+  student_id: number;
+}
+
+export interface PaymentGatewaySession {
+  provider: PaymentGatewayProvider;
+  mode: PaymentGatewayMode;
+  order_id: string;
+  cf_order_id: string | null;
+  payment_session_id: string;
+  checkout_url: string | null;
+  upi_intent: string | null;
+  expires_at: string | null;
+  order_status: string;
+  note: string;
+}
+
+export interface CashfreePaymentRequestResult {
+  payment: Payment;
+  session: PaymentGatewaySession;
 }
 
 export type PaymentDueStatus = 'overdue' | 'due_today' | 'due_soon' | 'current';

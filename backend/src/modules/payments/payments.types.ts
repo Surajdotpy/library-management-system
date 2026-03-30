@@ -1,3 +1,10 @@
+export type PaymentStatus = 'paid' | 'pending' | 'failed' | 'refunded';
+export type PaymentVerificationSource =
+  | 'legacy'
+  | 'manual_entry'
+  | 'superadmin_review'
+  | 'gateway_webhook';
+
 // Payment record from database
 export interface Payment {
   id: number;
@@ -10,9 +17,21 @@ export interface Payment {
   fee_year: number;
   payment_method: 'upi';  // Only UPI for now
   transaction_id: string | null;
-  status: 'paid' | 'pending' | 'failed' | 'refunded';
+  status: PaymentStatus;
+  gateway_provider: PaymentGatewayProvider | null;
+  gateway_mode: PaymentGatewayMode | null;
+  gateway_session_id: string | null;
+  gateway_cf_order_id: string | null;
+  gateway_checkout_url: string | null;
+  gateway_upi_intent: string | null;
+  gateway_order_status: string | null;
+  gateway_expires_at: Date | null;
   collected_by: number;
   receipt_number: string;
+  verification_source: PaymentVerificationSource;
+  verification_reference: string | null;
+  verified_at: Date | null;
+  verified_by: number | null;
   notes: string | null;
   created_at: Date;
   updated_at: Date;
@@ -27,22 +46,29 @@ export interface RecordPaymentDTO {
   payment_method?: 'upi';  // Optional, defaults to 'upi'
   transaction_id?: string;
   notes?: string;
+  gateway_provider?: PaymentGatewayProvider;
+  gateway_mode?: PaymentGatewayMode;
+  gateway_session_id?: string;
+  gateway_cf_order_id?: string | null;
+  gateway_checkout_url?: string | null;
+  gateway_upi_intent?: string | null;
+  gateway_order_status?: string | null;
+  gateway_expires_at?: Date | null;
+}
+
+export interface ConfirmPaymentDTO {
+  verification_reference?: string;
+  confirmed_at?: string;
+  amount?: number;
+}
+
+export interface ConfirmPaymentWebhookDTO extends ConfirmPaymentDTO {
+  payment_id?: number;
+  transaction_id?: string;
 }
 
 // Payment with student details
-export interface PaymentWithStudent {
-  id: number;
-  payment_date: Date;
-  coverage_start_date: Date;
-  coverage_end_date: Date;
-  amount: number;
-  fee_month: number;
-  fee_year: number;
-  payment_method: string;
-  transaction_id: string | null;
-  status: string;
-  receipt_number: string;
-  student_id: number;
+export interface PaymentWithStudent extends Payment {
   student_name: string;
   student_code: string;
   student_email: string | null;
@@ -57,6 +83,8 @@ export type PaymentCommunicationRequestChannel = PaymentCommunicationChannel | '
 export type PaymentReminderStage = 'before_3_days' | 'due_today' | 'overdue';
 export type PaymentCommunicationStatus = 'logged' | 'sent' | 'failed';
 export type PaymentCommunicationDeliveryMode = 'log_only' | 'webhook' | 'provider';
+export type PaymentGatewayProvider = 'cashfree';
+export type PaymentGatewayMode = 'mock' | 'sandbox' | 'production';
 
 export interface PaymentCommunication {
   id: number;
@@ -151,6 +179,28 @@ export interface QRPaymentResponse {
   payment_id: string;
   upi_string: string;
   expires_at: Date;
+}
+
+export interface CreateCashfreePaymentRequestDTO {
+  student_id: number;
+}
+
+export interface CashfreePaymentSession {
+  provider: PaymentGatewayProvider;
+  mode: PaymentGatewayMode;
+  order_id: string;
+  cf_order_id: string | null;
+  payment_session_id: string;
+  checkout_url: string | null;
+  upi_intent: string | null;
+  expires_at: Date | null;
+  order_status: string;
+  note: string;
+}
+
+export interface CashfreePaymentRequestResult {
+  payment: Payment;
+  session: CashfreePaymentSession;
 }
 
 // Receipt data for WhatsApp/Email (Phase 3)

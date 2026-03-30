@@ -1,6 +1,11 @@
+import type { PoolClient } from 'pg';
 import pool from '../../config/db.ts';
 import * as notificationsService from '../notifications/notifications.service.ts';
 import type {
+  CashfreePaymentRequestResult,
+  ConfirmPaymentDTO,
+  ConfirmPaymentWebhookDTO,
+  CreateCashfreePaymentRequestDTO,
   Payment,
   PaymentAlertSummary,
   PaymentCommunication,
@@ -8,12 +13,17 @@ import type {
   PaymentCommunicationRequestChannel,
   PaymentReminderBatchResult,
   PaymentReminderStage,
+  PaymentVerificationSource,
   PaymentWithStudent,
   PendingPayment,
   RecordPaymentDTO,
   MonthlyRevenue,
   ReceiptData,
 } from './payments.types.ts';
+import {
+  buildMockCashfreeWebhookPayload,
+  createCashfreePaymentSession,
+} from './payments.cashfree.ts';
 import {
   buildReceiptMessage,
   buildReminderMessage,
@@ -63,6 +73,15 @@ interface PaymentCommunicationRow extends PaymentCommunication {
   receipt_snapshot: ReceiptData | null;
 }
 
+interface LockedPaymentRecord extends Payment {
+  student_name: string;
+  student_code: string;
+  student_email: string | null;
+  student_phone: string;
+  branch_id: number;
+  branch_name: string;
+}
+
 function parseDateOnly(value: string): Date {
   const [yearPart = '1970', monthPart = '1', dayPart = '1'] = value.split('-');
   const year = Number.parseInt(yearPart, 10);
@@ -83,6 +102,173 @@ function addDays(value: Date, days: number): Date {
 
 function diffDays(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function isValidDate(value: Date): boolean {
+  return !Number.isNaN(value.getTime());
+}
+
+function normalizeConfirmedAt(value?: string): Date {
+  if (!value) {
+    return new Date();
+  }
+
+  const parsedValue = new Date(value);
+
+  if (!isValidDate(parsedValue)) {
+    throw new Error('Invalid confirmed_at value');
+  }
+
+  return parsedValue;
+}
+
+function generateCashfreeOrderId(studentId: number): string {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const randomSuffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `CFPAY-${studentId}-${timestamp}-${randomSuffix}`;
+}
+
+function calculateCoverageWindow(todayDate: Date, latestCoverageEnd: Date | null) {
+  const coverageStartDate =
+    latestCoverageEnd && latestCoverageEnd >= todayDate
+      ? addDays(latestCoverageEnd, 1)
+      : todayDate;
+  const coverageEndDate = addDays(coverageStartDate, PAYMENT_CYCLE_END_OFFSET);
+
+  return {
+    coverageStartDate,
+    coverageEndDate,
+  };
+}
+
+async function getLatestPaidCoverage(
+  db: Pick<PoolClient, 'query'>,
+  studentId: number,
+  excludedPaymentId?: number,
+): Promise<{
+  coverageEndDate: Date | null;
+  paymentDate: Date | null;
+}> {
+  const params: Array<number> = [studentId];
+  let query = `
+    SELECT
+      coverage_end_date::text,
+      payment_date::date::text AS payment_date
+    FROM fee_payments
+    WHERE student_id = $1
+      AND status = 'paid'
+  `;
+
+  if (excludedPaymentId != null) {
+    params.push(excludedPaymentId);
+    query += ` AND id <> $${params.length}`;
+  }
+
+  query += `
+    ORDER BY coverage_end_date DESC, payment_date DESC, id DESC
+    LIMIT 1
+    FOR UPDATE
+  `;
+
+  const latestCoverageResult = await db.query<{
+    coverage_end_date: string;
+    payment_date: string;
+  }>(query, params);
+
+  return {
+    coverageEndDate: latestCoverageResult.rows[0]?.coverage_end_date
+      ? parseDateOnly(latestCoverageResult.rows[0].coverage_end_date)
+      : null,
+    paymentDate: latestCoverageResult.rows[0]?.payment_date
+      ? parseDateOnly(latestCoverageResult.rows[0].payment_date)
+      : null,
+  };
+}
+
+async function getLockedPaymentRecord(
+  client: PoolClient,
+  paymentId: number,
+  branchId?: number,
+): Promise<LockedPaymentRecord | null> {
+  const params: Array<number> = [paymentId];
+  let query = `
+    SELECT
+      p.*,
+      s.name AS student_name,
+      s.student_id AS student_code,
+      s.email AS student_email,
+      s.phone AS student_phone,
+      s.branch_id,
+      b.name AS branch_name
+    FROM fee_payments p
+    JOIN students s ON s.id = p.student_id
+    JOIN branches b ON b.id = s.branch_id
+    WHERE p.id = $1
+  `;
+
+  if (branchId != null) {
+    params.push(branchId);
+    query += ` AND s.branch_id = $${params.length}`;
+  }
+
+  query += ' FOR UPDATE';
+
+  const result = await client.query<LockedPaymentRecord>(query, params);
+  return result.rows[0] ?? null;
+}
+
+async function getActiveStudentPaymentRecord(
+  client: PoolClient,
+  studentId: number,
+  branchId?: number,
+): Promise<StudentPaymentRecord> {
+  const params: number[] = [studentId];
+  let query = `
+    SELECT
+      s.id,
+      s.name,
+      s.student_id AS student_code,
+      s.email,
+      s.phone,
+      s.branch_id,
+      b.name AS branch_name,
+      s.monthly_fee
+    FROM students s
+    JOIN branches b ON b.id = s.branch_id
+    WHERE s.id = $1
+      AND s.is_active = true
+    FOR UPDATE
+  `;
+
+  if (branchId != null) {
+    params.push(branchId);
+    query = `
+      SELECT
+        s.id,
+        s.name,
+        s.student_id AS student_code,
+        s.email,
+        s.phone,
+        s.branch_id,
+        b.name AS branch_name,
+        s.monthly_fee
+      FROM students s
+      JOIN branches b ON b.id = s.branch_id
+      WHERE s.id = $1
+        AND s.is_active = true
+        AND s.branch_id = $2
+      FOR UPDATE
+    `;
+  }
+
+  const result = await client.query<StudentPaymentRecord>(query, params);
+  const student = result.rows[0];
+
+  if (!student) {
+    throw new Error('Student not found or inactive');
+  }
+
+  return student;
 }
 
 async function getLatestReminderMap(
@@ -308,7 +494,23 @@ async function getPaymentWithDetailsById(
       p.payment_method,
       p.transaction_id,
       p.status,
+      p.gateway_provider,
+      p.gateway_mode,
+      p.gateway_session_id,
+      p.gateway_cf_order_id,
+      p.gateway_checkout_url,
+      p.gateway_upi_intent,
+      p.gateway_order_status,
+      p.gateway_expires_at,
+      p.collected_by,
       p.receipt_number,
+      p.verification_source,
+      p.verification_reference,
+      p.verified_at,
+      p.verified_by,
+      p.notes,
+      p.created_at,
+      p.updated_at,
       p.student_id,
       s.name AS student_name,
       s.student_id AS student_code,
@@ -473,40 +675,7 @@ export async function recordPayment(
   try {
     await client.query('BEGIN');
 
-    const studentParams: number[] = [data.student_id];
-    let studentQuery = `
-      SELECT
-        s.id,
-        s.name,
-        s.student_id AS student_code,
-        s.email,
-        s.phone,
-        s.branch_id,
-        b.name AS branch_name,
-        s.monthly_fee
-      FROM students s
-      JOIN branches b ON b.id = s.branch_id
-      WHERE s.id = $1 AND s.is_active = true
-    `;
-
-    if (branchId != null) {
-      studentParams.push(branchId);
-      studentQuery += ` AND s.branch_id = $${studentParams.length}`;
-    }
-
-    studentQuery += ' FOR UPDATE';
-
-    const studentResult = await client.query<StudentPaymentRecord>(studentQuery, studentParams);
-
-    if (studentResult.rows.length === 0) {
-      throw new Error('Student not found or inactive');
-    }
-
-    const studentRow = studentResult.rows[0];
-
-    if (!studentRow) {
-      throw new Error('Student not found or inactive');
-    }
+    const studentRow = await getActiveStudentPaymentRecord(client, data.student_id, branchId);
 
     const expectedFee = Number.parseFloat(String(studentRow.monthly_fee));
 
@@ -522,40 +691,34 @@ export async function recordPayment(
     const todayRow = todayResult.rows[0];
     const todayDate = parseDateOnly(todayRow?.today ?? new Date().toISOString().slice(0, 10));
 
-    const latestCoverageResult = await client.query<{
-      coverage_end_date: string;
-      payment_date: string;
-    }>(
+    const existingPendingResult = await client.query<{ id: number }>(
       `
         SELECT
-          coverage_end_date::text,
-          payment_date::date::text AS payment_date
+          id
         FROM fee_payments
         WHERE student_id = $1
-          AND status = 'paid'
-        ORDER BY coverage_end_date DESC, payment_date DESC, id DESC
+          AND status = 'pending'
+        ORDER BY id DESC
         LIMIT 1
         FOR UPDATE
       `,
       [data.student_id],
     );
 
-    const latestCoverageEnd = latestCoverageResult.rows[0]?.coverage_end_date
-      ? parseDateOnly(latestCoverageResult.rows[0].coverage_end_date)
-      : null;
-    const latestPaymentDate = latestCoverageResult.rows[0]?.payment_date
-      ? parseDateOnly(latestCoverageResult.rows[0].payment_date)
-      : null;
-
-    if (latestPaymentDate?.getTime() === todayDate.getTime()) {
-      throw new Error('Payment already recorded today for this student');
+    if (existingPendingResult.rows.length > 0) {
+      throw new Error('Payment is already pending verification for this student');
     }
 
-    const coverageStartDate =
-      latestCoverageEnd && latestCoverageEnd >= todayDate
-        ? addDays(latestCoverageEnd, 1)
-        : todayDate;
-    const coverageEndDate = addDays(coverageStartDate, PAYMENT_CYCLE_END_OFFSET);
+    const latestPaidCoverage = await getLatestPaidCoverage(client, data.student_id);
+
+    if (latestPaidCoverage.paymentDate?.getTime() === todayDate.getTime()) {
+      throw new Error('Payment already submitted today for this student');
+    }
+
+    const { coverageStartDate, coverageEndDate } = calculateCoverageWindow(
+      todayDate,
+      latestPaidCoverage.coverageEndDate,
+    );
 
     const insertQuery = `
       INSERT INTO fee_payments (
@@ -569,6 +732,18 @@ export async function recordPayment(
         payment_method,
         transaction_id,
         status,
+        gateway_provider,
+        gateway_mode,
+        gateway_session_id,
+        gateway_cf_order_id,
+        gateway_checkout_url,
+        gateway_upi_intent,
+        gateway_order_status,
+        gateway_expires_at,
+        verification_source,
+        verification_reference,
+        verified_at,
+        verified_by,
         collected_by,
         notes
       ) VALUES (
@@ -581,9 +756,21 @@ export async function recordPayment(
         $6,
         $7,
         $8,
-        'paid',
+        'pending',
         $9,
-        $10
+        $10,
+        $11,
+        $12,
+        $13,
+        $14,
+        $15,
+        $16,
+        'manual_entry',
+        NULL,
+        NULL,
+        NULL,
+        $17,
+        $18
       )
       RETURNING *;
     `;
@@ -597,6 +784,14 @@ export async function recordPayment(
       data.fee_year ?? coverageEndDate.getUTCFullYear(),
       data.payment_method || 'upi',
       data.transaction_id || null,
+      data.gateway_provider ?? null,
+      data.gateway_mode ?? null,
+      data.gateway_session_id ?? null,
+      data.gateway_cf_order_id ?? null,
+      data.gateway_checkout_url ?? null,
+      data.gateway_upi_intent ?? null,
+      data.gateway_order_status ?? null,
+      data.gateway_expires_at ?? null,
       collectedBy,
       data.notes || null,
     ]);
@@ -607,23 +802,7 @@ export async function recordPayment(
       throw new Error('Payment record was not returned after creation');
     }
 
-    await notificationsService.createPaymentReceivedNotification(client, {
-      paymentId: createdPayment.id,
-      studentId: createdPayment.student_id,
-      studentName: studentRow.name,
-      branchId: studentRow.branch_id,
-      branchName: studentRow.branch_name,
-      amount: createdPayment.amount,
-      receiptNumber: createdPayment.receipt_number,
-    });
-
     await client.query('COMMIT');
-
-    try {
-      await sendPaymentReceipt(createdPayment.id, collectedBy, branchId, 'both');
-    } catch (communicationError) {
-      console.error('Automatic payment receipt logging failed:', communicationError);
-    }
 
     return createdPayment;
   } catch (error) {
@@ -632,6 +811,318 @@ export async function recordPayment(
   } finally {
     client.release();
   }
+}
+
+export async function createCashfreePaymentRequest(
+  data: CreateCashfreePaymentRequestDTO,
+  requestedBy: number,
+  branchId?: number,
+): Promise<CashfreePaymentRequestResult> {
+  const client = await pool.connect();
+  let transactionOpen = false;
+
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+
+    const student = await getActiveStudentPaymentRecord(client, data.student_id, branchId);
+    const existingPendingResult = await client.query<{ id: number }>(
+      `
+        SELECT id
+        FROM fee_payments
+        WHERE student_id = $1
+          AND status = 'pending'
+        ORDER BY id DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [data.student_id],
+    );
+
+    if (existingPendingResult.rows.length > 0) {
+      throw new Error('Payment is already pending verification for this student');
+    }
+
+    await client.query('COMMIT');
+    transactionOpen = false;
+
+    const amount = Number.parseFloat(String(student.monthly_fee));
+    const orderId = generateCashfreeOrderId(student.id);
+    const session = await createCashfreePaymentSession({
+      orderId,
+      amount,
+      customerId: student.student_code,
+      customerName: student.name,
+      customerEmail: student.email,
+      customerPhone: student.phone,
+      note: `Library fee for ${student.name}`,
+    });
+
+    const payment = await recordPayment(
+      {
+        student_id: data.student_id,
+        amount,
+        payment_method: 'upi',
+        transaction_id: session.order_id,
+        notes: `Cashfree ${session.mode} request created`,
+        gateway_provider: session.provider,
+        gateway_mode: session.mode,
+        gateway_session_id: session.payment_session_id,
+        gateway_cf_order_id: session.cf_order_id,
+        gateway_checkout_url: session.checkout_url,
+        gateway_upi_intent: session.upi_intent,
+        gateway_order_status: session.order_status,
+        gateway_expires_at: session.expires_at,
+      },
+      requestedBy,
+      branchId,
+    );
+
+    return {
+      payment,
+      session,
+    };
+  } catch (error) {
+    if (transactionOpen) {
+      await client.query('ROLLBACK');
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function confirmPendingPayment(input: {
+  paymentId: number;
+  verificationSource: PaymentVerificationSource;
+  verificationReference?: string;
+  confirmedAt?: string;
+  amount?: number;
+  verifiedBy?: number | null;
+  branchId?: number;
+}): Promise<Payment> {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const paymentRecord = await getLockedPaymentRecord(
+      client,
+      input.paymentId,
+      input.branchId,
+    );
+
+    if (!paymentRecord) {
+      throw new Error('Payment not found');
+    }
+
+    if (paymentRecord.status === 'failed' || paymentRecord.status === 'refunded') {
+      throw new Error('Only pending payments can be confirmed');
+    }
+
+    if (paymentRecord.status === 'paid') {
+      await client.query('COMMIT');
+      return paymentRecord;
+    }
+
+    const expectedAmount = Number.parseFloat(String(paymentRecord.amount));
+
+    if (
+      input.amount != null &&
+      Math.abs(Number.parseFloat(String(input.amount)) - expectedAmount) > 0.001
+    ) {
+      throw new Error(
+        `Amount mismatch. Expected: Rs.${paymentRecord.amount}, Received: Rs.${input.amount}`,
+      );
+    }
+
+    const confirmedAt = normalizeConfirmedAt(input.confirmedAt);
+    const confirmedDate = parseDateOnly(formatDateOnly(confirmedAt));
+    const latestPaidCoverage = await getLatestPaidCoverage(
+      client,
+      paymentRecord.student_id,
+      paymentRecord.id,
+    );
+    const { coverageStartDate, coverageEndDate } = calculateCoverageWindow(
+      confirmedDate,
+      latestPaidCoverage.coverageEndDate,
+    );
+    const confirmedPaymentDate = formatDateOnly(confirmedAt);
+    const verificationReference =
+      input.verificationReference?.trim() ||
+      paymentRecord.transaction_id ||
+      paymentRecord.verification_reference ||
+      null;
+
+    const updateResult = await client.query<Payment>(
+      `
+        UPDATE fee_payments
+        SET
+          payment_date = $2,
+          coverage_start_date = $3,
+          coverage_end_date = $4,
+          status = 'paid',
+          verification_source = $5,
+          verification_reference = $6,
+          verified_at = $7,
+          verified_by = $8,
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `,
+      [
+        paymentRecord.id,
+        confirmedPaymentDate,
+        formatDateOnly(coverageStartDate),
+        formatDateOnly(coverageEndDate),
+        input.verificationSource,
+        verificationReference,
+        confirmedAt,
+        input.verifiedBy ?? null,
+      ],
+    );
+
+    const confirmedPayment = updateResult.rows[0];
+
+    if (!confirmedPayment) {
+      throw new Error('Payment record was not returned after confirmation');
+    }
+
+    await notificationsService.createPaymentReceivedNotification(client, {
+      paymentId: confirmedPayment.id,
+      studentId: confirmedPayment.student_id,
+      studentName: paymentRecord.student_name,
+      branchId: paymentRecord.branch_id,
+      branchName: paymentRecord.branch_name,
+      amount: confirmedPayment.amount,
+      receiptNumber: confirmedPayment.receipt_number,
+    });
+
+    await client.query('COMMIT');
+
+    try {
+      await sendPaymentReceipt(
+        confirmedPayment.id,
+        input.verifiedBy ?? null,
+        input.branchId,
+        'both',
+      );
+    } catch (communicationError) {
+      console.error('Automatic payment receipt logging failed:', communicationError);
+    }
+
+    return confirmedPayment;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function confirmPayment(
+  paymentId: number,
+  verifiedBy: number,
+  branchId?: number,
+  data: ConfirmPaymentDTO = {},
+): Promise<Payment> {
+  return confirmPendingPayment({
+    paymentId,
+    verificationSource: 'superadmin_review',
+    verifiedBy,
+    ...(data.verification_reference
+      ? { verificationReference: data.verification_reference }
+      : {}),
+    ...(data.confirmed_at ? { confirmedAt: data.confirmed_at } : {}),
+    ...(data.amount != null ? { amount: data.amount } : {}),
+    ...(branchId != null ? { branchId } : {}),
+  });
+}
+
+export async function simulateCashfreePaymentSuccess(
+  paymentId: number,
+  triggeredBy: number,
+  branchId?: number,
+): Promise<Payment> {
+  const payment = await getPaymentWithDetailsById(paymentId, branchId);
+
+  if (!payment) {
+    throw new Error('Payment not found');
+  }
+
+  if (!payment.transaction_id) {
+    throw new Error('Cashfree order reference is missing for this payment');
+  }
+
+  if (payment.status === 'paid') {
+    return payment;
+  }
+
+  const mockWebhook = buildMockCashfreeWebhookPayload({
+    orderId: payment.transaction_id,
+    amount: payment.amount,
+    cfPaymentId: `mock_cf_success_${payment.id}_${triggeredBy}`,
+  });
+
+  const webhookConfirmation: ConfirmPaymentWebhookDTO = {
+    transaction_id: payment.transaction_id,
+    amount: payment.amount,
+    ...(mockWebhook.payload.data?.payment?.cf_payment_id
+      ? {
+          verification_reference: mockWebhook.payload.data.payment.cf_payment_id,
+        }
+      : {}),
+    ...(mockWebhook.payload.data?.payment?.payment_time
+      ? {
+          confirmed_at: mockWebhook.payload.data.payment.payment_time,
+        }
+      : {}),
+  };
+
+  return confirmPaymentFromWebhook(webhookConfirmation);
+}
+
+export async function confirmPaymentFromWebhook(
+  data: ConfirmPaymentWebhookDTO,
+): Promise<Payment> {
+  const paymentId = data.payment_id;
+  const transactionId = data.transaction_id?.trim();
+
+  if (paymentId == null && !transactionId) {
+    throw new Error('payment_id or transaction_id is required');
+  }
+
+  let resolvedPaymentId = paymentId;
+
+  if (resolvedPaymentId == null && transactionId) {
+    const lookupResult = await pool.query<{ id: number }>(
+      `
+        SELECT id
+        FROM fee_payments
+        WHERE transaction_id = $1
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      [transactionId],
+    );
+
+    resolvedPaymentId = lookupResult.rows[0]?.id;
+  }
+
+  if (resolvedPaymentId == null) {
+    throw new Error('Payment not found');
+  }
+
+  const webhookReference = data.verification_reference ?? transactionId;
+
+  return confirmPendingPayment({
+    paymentId: resolvedPaymentId,
+    verificationSource: 'gateway_webhook',
+    verifiedBy: null,
+    ...(webhookReference ? { verificationReference: webhookReference } : {}),
+    ...(data.confirmed_at ? { confirmedAt: data.confirmed_at } : {}),
+    ...(data.amount != null ? { amount: data.amount } : {}),
+  });
 }
 
 // Get student's payment history
@@ -679,7 +1170,23 @@ export async function getAllPayments(
       p.payment_method,
       p.transaction_id,
       p.status,
+      p.gateway_provider,
+      p.gateway_mode,
+      p.gateway_session_id,
+      p.gateway_cf_order_id,
+      p.gateway_checkout_url,
+      p.gateway_upi_intent,
+      p.gateway_order_status,
+      p.gateway_expires_at,
+      p.collected_by,
       p.receipt_number,
+      p.verification_source,
+      p.verification_reference,
+      p.verified_at,
+      p.verified_by,
+      p.notes,
+      p.created_at,
+      p.updated_at,
       p.student_id,
       s.name as student_name,
       s.student_id as student_code,
@@ -964,7 +1471,7 @@ export async function runReminderBatch(
 
 export async function sendPaymentReceipt(
   paymentId: number,
-  sentBy: number,
+  sentBy: number | null,
   branchId?: number,
   requestedChannel: PaymentCommunicationRequestChannel = 'both',
 ): Promise<PaymentCommunication[]> {
@@ -972,6 +1479,10 @@ export async function sendPaymentReceipt(
 
   if (!payment) {
     throw new Error('Payment not found');
+  }
+
+  if (payment.status !== 'paid') {
+    throw new Error('Receipt is available only after payment verification');
   }
 
   const receiptSnapshot = toReceiptSnapshot(payment);
@@ -1117,7 +1628,23 @@ export async function getPaymentByReceiptNumber(
       p.payment_method,
       p.transaction_id,
       p.status,
+      p.gateway_provider,
+      p.gateway_mode,
+      p.gateway_session_id,
+      p.gateway_cf_order_id,
+      p.gateway_checkout_url,
+      p.gateway_upi_intent,
+      p.gateway_order_status,
+      p.gateway_expires_at,
+      p.collected_by,
       p.receipt_number,
+      p.verification_source,
+      p.verification_reference,
+      p.verified_at,
+      p.verified_by,
+      p.notes,
+      p.created_at,
+      p.updated_at,
       p.student_id,
       s.name as student_name,
       s.student_id as student_code,

@@ -1,12 +1,19 @@
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import type { AuthRequest } from '../auth/auth.types.ts';
 import * as paymentService from './payments.service.ts';
 import type {
+  CreateCashfreePaymentRequestDTO,
+  ConfirmPaymentDTO,
+  ConfirmPaymentWebhookDTO,
   PaymentCommunicationQueryOptions,
   RecordPaymentDTO,
   SendPaymentReceiptDTO,
   SendPaymentReminderDTO,
 } from './payments.types.ts';
+import {
+  parseCashfreeSuccessfulPaymentWebhook,
+  verifyCashfreeWebhookSignature,
+} from './payments.cashfree.ts';
 import {
   isAuthorizationError,
   requireAuthenticatedUser,
@@ -42,10 +49,23 @@ function isValidRequestedChannel(value: unknown): boolean {
   return value == null || value === 'sms' || value === 'whatsapp' || value === 'both';
 }
 
+interface RawBodyRequest extends Request {
+  rawBody?: string;
+}
+
 // POST /api/payments - Record a new payment
 export async function recordPayment(req: AuthRequest, res: Response) {
   try {
-    const data: RecordPaymentDTO = req.body;
+    const body = (req.body ?? {}) as Partial<RecordPaymentDTO>;
+    const data: RecordPaymentDTO = {
+      student_id: body.student_id as number,
+      amount: body.amount as number,
+      ...(body.fee_month != null ? { fee_month: body.fee_month } : {}),
+      ...(body.fee_year != null ? { fee_year: body.fee_year } : {}),
+      ...(body.payment_method ? { payment_method: body.payment_method } : {}),
+      ...(body.transaction_id ? { transaction_id: body.transaction_id } : {}),
+      ...(body.notes ? { notes: body.notes } : {}),
+    };
 
     if (!data.student_id || !data.amount) {
       return badRequest(res, 'Missing required fields: student_id, amount');
@@ -76,7 +96,7 @@ export async function recordPayment(req: AuthRequest, res: Response) {
 
     res.status(201).json({
       success: true,
-      message: 'Payment recorded successfully',
+      message: 'Payment submitted for verification',
       data: payment,
     });
   } catch (error: any) {
@@ -90,7 +110,8 @@ export async function recordPayment(req: AuthRequest, res: Response) {
     console.error('Record payment error:', error);
 
     if (
-      error.message.includes('already recorded') ||
+      error.message.includes('already submitted') ||
+      error.message.includes('already pending verification') ||
       error.message.includes('not found') ||
       error.message.includes('Amount mismatch')
     ) {
@@ -100,6 +121,256 @@ export async function recordPayment(req: AuthRequest, res: Response) {
     res.status(500).json({
       success: false,
       error: 'Failed to record payment',
+    });
+  }
+}
+
+// POST /api/payments/:paymentId/confirm - Confirm a pending payment after bank verification
+export async function confirmPayment(req: AuthRequest, res: Response) {
+  try {
+    const paymentId = Number.parseInt(req.params.paymentId as string, 10);
+    const data = (req.body ?? {}) as ConfirmPaymentDTO;
+
+    if (Number.isNaN(paymentId)) {
+      return badRequest(res, 'Invalid payment ID');
+    }
+
+    const user = requireAuthenticatedUser(req.user);
+    const payment = await paymentService.confirmPayment(paymentId, user.userId, undefined, data);
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment confirmed successfully',
+      data: payment,
+    });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    console.error('Confirm payment error:', error);
+
+    if (
+      error.message.includes('not found') ||
+      error.message.includes('Only pending payments') ||
+      error.message.includes('Amount mismatch') ||
+      error.message.includes('Invalid confirmed_at')
+    ) {
+      return badRequest(res, error.message);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to confirm payment',
+    });
+  }
+}
+
+// POST /api/payments/webhooks/confirm - Confirm a pending payment from an external payment system
+export async function confirmPaymentWebhook(req: Request, res: Response) {
+  try {
+    const configuredSecret = process.env.PAYMENT_WEBHOOK_SECRET?.trim();
+    const providedSecret = req.get('x-payment-webhook-secret')?.trim();
+
+    if (!configuredSecret) {
+      return res.status(503).json({
+        success: false,
+        error: 'Payment webhook confirmation is not configured',
+      });
+    }
+
+    if (!providedSecret || providedSecret !== configuredSecret) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid webhook secret',
+      });
+    }
+
+    const data = (req.body ?? {}) as ConfirmPaymentWebhookDTO;
+
+    if (data.payment_id == null && !data.transaction_id?.trim()) {
+      return badRequest(res, 'payment_id or transaction_id is required');
+    }
+
+    const payment = await paymentService.confirmPaymentFromWebhook(data);
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment confirmed via webhook',
+      data: payment,
+    });
+  } catch (error: any) {
+    console.error('Confirm payment webhook error:', error);
+
+    if (
+      error.message.includes('required') ||
+      error.message.includes('not found') ||
+      error.message.includes('Only pending payments') ||
+      error.message.includes('Amount mismatch') ||
+      error.message.includes('Invalid confirmed_at')
+    ) {
+      return badRequest(res, error.message);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to confirm payment from webhook',
+    });
+  }
+}
+
+// POST /api/payments/cashfree/request - Create a Cashfree-style payment request
+export async function createCashfreePaymentRequest(req: AuthRequest, res: Response) {
+  try {
+    const data = (req.body ?? {}) as CreateCashfreePaymentRequestDTO;
+
+    if (!data.student_id) {
+      return badRequest(res, 'student_id is required');
+    }
+
+    const user = requireAuthenticatedUser(req.user);
+    const branchId = resolveAuthorizedBranchId(user);
+    const result = await paymentService.createCashfreePaymentRequest(
+      data,
+      user.userId,
+      branchId,
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Cashfree payment request created',
+      data: result,
+    });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    console.error('Create Cashfree payment request error:', error);
+
+    if (
+      error.message.includes('student_id is required') ||
+      error.message.includes('pending verification') ||
+      error.message.includes('not found') ||
+      error.message.includes('credentials are missing') ||
+      error.message.includes('Cashfree')
+    ) {
+      return badRequest(res, error.message);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create Cashfree payment request',
+    });
+  }
+}
+
+// POST /api/payments/cashfree/webhook - Handle Cashfree payment success webhooks
+export async function handleCashfreeWebhook(req: RawBodyRequest, res: Response) {
+  try {
+    const rawBody = req.rawBody ?? JSON.stringify(req.body ?? {});
+    const timestamp = req.get('x-webhook-timestamp');
+    const signature = req.get('x-webhook-signature');
+
+    if (!verifyCashfreeWebhookSignature(rawBody, timestamp, signature)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid Cashfree webhook signature',
+      });
+    }
+
+    const paymentUpdate = parseCashfreeSuccessfulPaymentWebhook(req.body);
+
+    if (!paymentUpdate) {
+      return res.status(200).json({
+        success: true,
+        message: 'Cashfree webhook ignored',
+      });
+    }
+
+    const webhookConfirmation: ConfirmPaymentWebhookDTO = {
+      transaction_id: paymentUpdate.orderId,
+      ...(paymentUpdate.cfPaymentId
+        ? { verification_reference: paymentUpdate.cfPaymentId }
+        : {}),
+      ...(paymentUpdate.paidAt ? { confirmed_at: paymentUpdate.paidAt } : {}),
+      ...(paymentUpdate.amount != null ? { amount: paymentUpdate.amount } : {}),
+    };
+    const payment = await paymentService.confirmPaymentFromWebhook(webhookConfirmation);
+
+    res.status(200).json({
+      success: true,
+      message: 'Cashfree payment confirmed',
+      data: payment,
+    });
+  } catch (error: any) {
+    console.error('Cashfree webhook error:', error);
+
+    if (
+      error.message.includes('required') ||
+      error.message.includes('not found') ||
+      error.message.includes('Only pending payments') ||
+      error.message.includes('Amount mismatch') ||
+      error.message.includes('Invalid confirmed_at')
+    ) {
+      return badRequest(res, error.message);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process Cashfree webhook',
+    });
+  }
+}
+
+// POST /api/payments/cashfree/mock-success/:paymentId - Simulate a Cashfree success callback in mock mode
+export async function simulateCashfreeSuccess(req: AuthRequest, res: Response) {
+  try {
+    const paymentId = Number.parseInt(req.params.paymentId as string, 10);
+
+    if (Number.isNaN(paymentId)) {
+      return badRequest(res, 'Invalid payment ID');
+    }
+
+    const user = requireAuthenticatedUser(req.user);
+    const payment = await paymentService.simulateCashfreePaymentSuccess(
+      paymentId,
+      user.userId,
+      undefined,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Mock Cashfree success processed',
+      data: payment,
+    });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    console.error('Mock Cashfree success error:', error);
+
+    if (
+      error.message.includes('not found') ||
+      error.message.includes('missing') ||
+      error.message.includes('Amount mismatch')
+    ) {
+      return badRequest(res, error.message);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to simulate Cashfree success',
     });
   }
 }
@@ -480,7 +751,10 @@ export async function sendPaymentReceipt(req: AuthRequest, res: Response) {
 
     console.error('Send payment receipt error:', error);
 
-    if (error.message.includes('not found')) {
+    if (
+      error.message.includes('not found') ||
+      error.message.includes('only after payment verification')
+    ) {
       return badRequest(res, error.message);
     }
 

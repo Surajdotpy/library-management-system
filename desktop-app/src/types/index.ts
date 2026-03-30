@@ -35,7 +35,14 @@ export type {
 // Payment types
 export type {
   Payment,
+  PaymentVerificationSource,
+  PaymentGatewayProvider,
+  PaymentGatewayMode,
   RecordPaymentRequest,
+  ConfirmPaymentRequest,
+  CreateCashfreePaymentRequest,
+  PaymentGatewaySession,
+  CashfreePaymentRequestResult,
   PaymentDueStatus,
   PaymentCommunicationType,
   PaymentCommunicationChannel,

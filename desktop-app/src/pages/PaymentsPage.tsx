@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   AlertCircle,
   CalendarClock,
   CircleAlert,
+  Copy,
   DollarSign,
+  ExternalLink,
   Loader2,
   Plus,
   Receipt,
   RefreshCcw,
+  ScanLine,
   Search,
+  Smartphone,
   Wallet,
 } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -18,6 +23,7 @@ import { getBranchName } from '@/config/branches';
 import { getStoredUser } from '@/lib/auth/session';
 import { paymentsApi, studentsApi } from '@/lib/api';
 import type {
+  CashfreePaymentRequestResult,
   MonthlyRevenue,
   PaymentCommunication,
   Payment,
@@ -58,6 +64,45 @@ function formatDateTime(value: string | Date | null): string {
 
 function formatDateRange(startDate: string, endDate: string): string {
   return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+}
+
+function getCashfreeScanValue(
+  session: CashfreePaymentRequestResult['session'] | null | undefined,
+): string | null {
+  if (!session) {
+    return null;
+  }
+
+  return session.upi_intent || session.checkout_url || null;
+}
+
+function getSavedCashfreeSession(
+  payment: Payment | null | undefined,
+): CashfreePaymentRequestResult['session'] | null {
+  if (
+    !payment ||
+    payment.gateway_provider !== 'cashfree' ||
+    !payment.transaction_id ||
+    !payment.gateway_session_id
+  ) {
+    return null;
+  }
+
+  return {
+    provider: payment.gateway_provider,
+    mode: payment.gateway_mode ?? 'mock',
+    order_id: payment.transaction_id,
+    cf_order_id: payment.gateway_cf_order_id ?? null,
+    payment_session_id: payment.gateway_session_id,
+    checkout_url: payment.gateway_checkout_url ?? null,
+    upi_intent: payment.gateway_upi_intent ?? null,
+    expires_at: payment.gateway_expires_at ?? null,
+    order_status:
+      payment.gateway_order_status ?? (payment.status === 'paid' ? 'PAID' : 'ACTIVE'),
+    note:
+      payment.notes ??
+      'Reopened from a pending Cashfree request saved earlier for this student.',
+  };
 }
 
 function addDays(baseDate: Date, days: number): Date {
@@ -140,6 +185,23 @@ function getCommunicationTypeLabel(communication: PaymentCommunication) {
   return 'Fee Reminder';
 }
 
+function getPaymentStatusVariant(
+  status: Payment['status'],
+): 'success' | 'warning' | 'danger' | 'default' {
+  if (status === 'paid') return 'success';
+  if (status === 'pending') return 'warning';
+  if (status === 'failed') return 'danger';
+  return 'default';
+}
+
+function getPaymentStatusLabel(status: Payment['status']): string {
+  if (status === 'pending') {
+    return 'Pending Verification';
+  }
+
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 export default function PaymentsPage() {
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
@@ -159,8 +221,10 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentActionKey, setPaymentActionKey] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
+  const [cashfreeRequest, setCashfreeRequest] = useState<CashfreePaymentRequestResult | null>(null);
   const [communicationError, setCommunicationError] = useState<string | null>(null);
   const [communicationSuccess, setCommunicationSuccess] = useState<string | null>(null);
   const [communicationActionKey, setCommunicationActionKey] = useState<string | null>(null);
@@ -216,6 +280,11 @@ export default function PaymentsPage() {
         setLoading(false);
       }
     }
+  };
+
+  const refreshSelectedStudentPayments = async (studentId: number) => {
+    const history = await paymentsApi.getStudentPayments(studentId);
+    setSelectedStudentPayments(history);
   };
 
   useEffect(() => {
@@ -277,7 +346,19 @@ export default function PaymentsPage() {
     [paymentForm.student_id, pendingPayments],
   );
 
-  const selectedLatestPayment = selectedStudentPayments[0] ?? null;
+  const selectedLatestPayment =
+    selectedStudentPayments.find((payment) => payment.status === 'paid') ?? null;
+  const selectedPendingSubmission =
+    selectedStudentPayments.find((payment) => payment.status === 'pending') ?? null;
+  const selectedPendingCashfreePayment =
+    selectedStudentPayments.find(
+      (payment) =>
+        payment.status === 'pending' && Boolean(payment.transaction_id?.startsWith('CFPAY-')),
+    ) ?? null;
+  const activeCashfreeSession =
+    cashfreeRequest?.session ?? getSavedCashfreeSession(selectedPendingCashfreePayment);
+  const cashfreeScanValue = getCashfreeScanValue(activeCashfreeSession);
+  const cashfreeCheckoutUrl = activeCashfreeSession?.checkout_url ?? null;
 
   const renewalPreview = useMemo(() => {
     if (!selectedStudent) {
@@ -305,7 +386,7 @@ export default function PaymentsPage() {
   const todayCollection = useMemo(() => {
     const todayKey = currentDate.toISOString().slice(0, 10);
     const todayPayments = currentMonthPayments.filter(
-      (payment) => payment.payment_date.slice(0, 10) === todayKey,
+      (payment) => payment.status === 'paid' && payment.payment_date.slice(0, 10) === todayKey,
     );
 
     return {
@@ -375,6 +456,7 @@ export default function PaymentsPage() {
       amount: student?.monthly_fee ?? 0,
     }));
 
+    setCashfreeRequest(null);
     setPaymentError(null);
     setPaymentSuccess(null);
   };
@@ -393,6 +475,7 @@ export default function PaymentsPage() {
     setPaymentLoading(true);
     setPaymentError(null);
     setPaymentSuccess(null);
+    setCashfreeRequest(null);
 
     try {
       await paymentsApi.record({
@@ -404,7 +487,7 @@ export default function PaymentsPage() {
       });
 
       setPaymentSuccess(
-        'Payment recorded successfully. The student coverage has been renewed for 30 days and receipt delivery was saved in communication history.',
+        'Payment submitted for verification. Coverage, receipt delivery, and superadmin notification will update only after confirmation.',
       );
       setPaymentForm({
         student_id: 0,
@@ -421,6 +504,119 @@ export default function PaymentsPage() {
       setPaymentError(err.response?.data?.error || 'Failed to record payment');
     } finally {
       setPaymentLoading(false);
+    }
+  };
+
+  const handleCreateCashfreeRequest = async () => {
+    if (!paymentForm.student_id) {
+      setPaymentError('Select a student before creating a Cashfree request.');
+      return;
+    }
+
+    if (!selectedStudent) {
+      setPaymentError('Selected student is not available.');
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setPaymentSuccess(null);
+
+    try {
+      const result = await paymentsApi.createCashfreeRequest({
+        student_id: paymentForm.student_id,
+      });
+
+      setCashfreeRequest(result);
+      setPaymentSuccess(
+        `Cashfree ${result.session.mode} request created for ${selectedStudent.name}. The payment stays pending until the provider success callback or superadmin confirmation happens.`,
+      );
+      await Promise.all([
+        fetchPaymentsData(false),
+        refreshSelectedStudentPayments(paymentForm.student_id),
+      ]);
+    } catch (err: any) {
+      console.error('Failed to create Cashfree request.', err);
+      setPaymentError(err.response?.data?.error || 'Failed to create Cashfree request');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleSimulateCashfreeSuccess = async (payment: Payment) => {
+    setPaymentActionKey(`cashfree-${payment.id}`);
+    setPaymentError(null);
+    setPaymentSuccess(null);
+
+    try {
+      await paymentsApi.simulateCashfreeSuccess(payment.id);
+      setPaymentSuccess(
+        `Mock Cashfree success received for ${payment.receipt_number}. Dashboard totals, receipts, and notifications now reflect the verified payment.`,
+      );
+      setCashfreeRequest(null);
+      await Promise.all([
+        fetchPaymentsData(false),
+        refreshSelectedStudentPayments(payment.student_id),
+      ]);
+    } catch (err: any) {
+      console.error('Failed to simulate Cashfree success.', err);
+      setPaymentError(err.response?.data?.error || 'Failed to simulate Cashfree success');
+    } finally {
+      setPaymentActionKey(null);
+    }
+  };
+
+  const handleCopyCashfreeScanValue = async () => {
+    if (!cashfreeScanValue) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(cashfreeScanValue);
+      setPaymentError(null);
+      setPaymentSuccess(
+        'Cashfree payment link copied. If scanning is inconvenient, the student can open the same link directly on their phone.',
+      );
+    } catch (error) {
+      console.error('Failed to copy Cashfree payment link.', error);
+      setPaymentError('Unable to copy the Cashfree payment link on this device.');
+    }
+  };
+
+  const handleConfirmPayment = async (payment: Payment) => {
+    if (
+      !window.confirm(
+        `Confirm payment ${payment.receipt_number} for ${payment.student_name || `Student #${payment.student_id}`}?\n\nUse this only after the real money is visible in the bank account or verified by webhook.`,
+      )
+    ) {
+      return;
+    }
+
+    setPaymentActionKey(`confirm-${payment.id}`);
+    setPaymentError(null);
+    setPaymentSuccess(null);
+
+    try {
+      await paymentsApi.confirm(
+        payment.id,
+        payment.transaction_id
+          ? { verification_reference: payment.transaction_id }
+          : {},
+      );
+
+      setPaymentSuccess(
+        `Payment ${payment.receipt_number} confirmed. Dashboard totals, receipt delivery, and superadmin notifications now use the verified payment.`,
+      );
+      setCashfreeRequest(null);
+      await Promise.all([
+        fetchPaymentsData(false),
+        refreshSelectedStudentPayments(payment.student_id),
+      ]);
+    } catch (err: any) {
+      console.error('Failed to confirm payment.', err);
+      setPaymentError(err.response?.data?.error || 'Failed to confirm payment');
+    } finally {
+      setPaymentActionKey(null);
     }
   };
 
@@ -513,7 +709,8 @@ export default function PaymentsPage() {
               Payments Management
             </h1>
             <p className="mt-1 text-gray-600">
-              Track collections, renew 30-day plans, and follow upcoming dues for {branchLabel}
+              Track verified collections, review pending payments, and follow upcoming dues for{' '}
+              {branchLabel}
             </p>
           </div>
 
@@ -535,7 +732,12 @@ export default function PaymentsPage() {
               type="button"
               variant="secondary"
               onClick={() => void fetchPaymentsData()}
-              disabled={loading || paymentLoading || communicationActionKey != null}
+              disabled={
+                loading ||
+                paymentLoading ||
+                paymentActionKey != null ||
+                communicationActionKey != null
+              }
               className="flex items-center gap-2"
             >
               <RefreshCcw className="h-4 w-4" />
@@ -588,7 +790,7 @@ export default function PaymentsPage() {
           <>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
               <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-100">
-                <p className="text-sm text-purple-700">Today's Collection</p>
+                <p className="text-sm text-purple-700">Today's Verified Collection</p>
                 <h2 className="mt-2 text-3xl font-bold text-purple-900">
                   {formatCurrency(todayCollection.amount)}
                 </h2>
@@ -633,9 +835,9 @@ export default function PaymentsPage() {
                 <Card>
                   <div className="mb-5 flex items-center justify-between">
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900">Record Payment</h3>
+                      <h3 className="text-lg font-bold text-gray-900">Submit Payment</h3>
                       <p className="mt-1 text-sm text-gray-600">
-                        Renew a student's coverage for the next 30-day cycle
+                        Submit a payment for verification before coverage renews
                       </p>
                     </div>
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-100">
@@ -685,8 +887,14 @@ export default function PaymentsPage() {
                               <p>Loading current coverage...</p>
                             ) : (
                               <>
+                                {selectedPendingSubmission && (
+                                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                                    A payment for this student is already pending verification from{' '}
+                                    {formatDateTime(selectedPendingSubmission.created_at || selectedPendingSubmission.payment_date)}.
+                                  </div>
+                                )}
                                 <p>
-                                  Last payment:{' '}
+                                  Last verified payment:{' '}
                                   <span className="font-medium">
                                     {selectedLatestPayment
                                       ? formatDate(selectedLatestPayment.payment_date)
@@ -717,7 +925,7 @@ export default function PaymentsPage() {
                                 {renewalPreview && (
                                   <>
                                     <p>
-                                      New coverage:{' '}
+                                      Projected coverage after confirmation:{' '}
                                       <span className="font-medium">
                                         {formatDate(renewalPreview.coverageStart)} -{' '}
                                         {formatDate(renewalPreview.coverageEnd)}
@@ -762,6 +970,186 @@ export default function PaymentsPage() {
                       disabled={paymentLoading}
                     />
 
+                    {(cashfreeRequest || selectedPendingCashfreePayment) && (
+                      <div className="rounded-3xl border border-sky-200 bg-linear-to-br from-sky-50 via-white to-cyan-50 p-5 text-sm text-sky-950 shadow-sm">
+                        <div className="flex flex-col gap-5 xl:flex-row">
+                          <div className="xl:w-[220px]">
+                            <div className="rounded-2xl border border-sky-200 bg-white p-4 shadow-sm">
+                              <div className="mb-3 flex items-center gap-2 text-sky-900">
+                                <ScanLine className="h-4 w-4" />
+                                <p className="font-semibold">Student Scan QR</p>
+                              </div>
+                              {cashfreeScanValue ? (
+                                <>
+                                  <div className="flex justify-center rounded-2xl border border-sky-100 bg-white p-3">
+                                    <QRCodeSVG
+                                      value={cashfreeScanValue}
+                                      size={180}
+                                      bgColor="#FFFFFF"
+                                      fgColor="#0f172a"
+                                      level="M"
+                                      includeMargin
+                                    />
+                                  </div>
+                                  <p className="mt-3 text-xs leading-5 text-sky-800">
+                                    Show this on the admin computer screen. The student scans it with
+                                    GPay, PhonePe, Paytm, or any UPI app.
+                                  </p>
+                                </>
+                              ) : (
+                                <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">
+                                  QR will appear here after Cashfree returns a hosted payment link.
+                                  In mock mode, keep this page open after creating the request.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 flex-1 space-y-3">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                                <Smartphone className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="font-semibold text-sky-950">Cashfree Payment Request</p>
+                                <p className="mt-1 text-xs leading-5 text-sky-800">
+                                  The fee amount is already locked from the student&apos;s plan, so the
+                                  admin does not need to type rupees manually.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="rounded-2xl border border-sky-100 bg-white/80 p-3">
+                                <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
+                                  Student
+                                </p>
+                                <p className="mt-1 font-semibold text-slate-900">
+                                  {selectedStudent?.name ??
+                                    selectedPendingCashfreePayment?.student_name ??
+                                    'Selected student'}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {selectedStudent?.student_id ??
+                                    selectedPendingCashfreePayment?.student_code ??
+                                    'Student ID'}
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-sky-100 bg-white/80 p-3">
+                                <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
+                                  Amount
+                                </p>
+                                <p className="mt-1 font-semibold text-slate-900">
+                                  {formatCurrency(
+                                    selectedStudent?.monthly_fee ??
+                                      selectedPendingCashfreePayment?.amount ??
+                                      0,
+                                  )}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  Locked to the student&apos;s current fee plan
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-sky-100 bg-white/80 p-3">
+                                <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
+                                  Order ID
+                                </p>
+                                <p className="mt-1 break-all font-mono text-xs text-slate-800">
+                                  {activeCashfreeSession?.order_id ??
+                                    selectedPendingCashfreePayment?.transaction_id ??
+                                    '-'}
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-sky-100 bg-white/80 p-3">
+                                <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
+                                  Status
+                                </p>
+                                <p className="mt-1 font-semibold text-slate-900">
+                                  {activeCashfreeSession?.mode ?? 'mock-ready'} request
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  Payment stays pending until the success callback arrives
+                                </p>
+                              </div>
+                            </div>
+
+                            {activeCashfreeSession?.payment_session_id && (
+                              <div className="rounded-2xl border border-sky-100 bg-white/80 p-3">
+                                <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
+                                  Session ID
+                                </p>
+                                <p className="mt-1 break-all font-mono text-xs text-slate-800">
+                                  {activeCashfreeSession.payment_session_id}
+                                </p>
+                              </div>
+                            )}
+
+                            {activeCashfreeSession?.expires_at && (
+                              <p className="text-xs text-sky-800">
+                                This request expires around{' '}
+                                <span className="font-medium">
+                                  {formatDateTime(activeCashfreeSession.expires_at)}
+                                </span>
+                                .
+                              </p>
+                            )}
+
+                            <p className="rounded-2xl border border-sky-100 bg-white/70 p-3 text-xs leading-5 text-sky-900">
+                              {activeCashfreeSession?.note ??
+                                'This pending payment can later be confirmed by a real Cashfree webhook after you replace the dummy env values.'}
+                            </p>
+
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => void handleCopyCashfreeScanValue()}
+                                disabled={!cashfreeScanValue}
+                                className="sm:flex-1"
+                              >
+                                <Copy className="h-4 w-4" />
+                                Copy Scan Link
+                              </Button>
+                              {cashfreeCheckoutUrl && (
+                                <a
+                                  href={cashfreeCheckoutUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-6 py-2.5 text-sm font-semibold text-sky-800 transition hover:border-sky-300 hover:bg-sky-50 sm:flex-1"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  Open Hosted Checkout
+                                </a>
+                              )}
+                            </div>
+
+                            {isSuperAdmin && selectedPendingCashfreePayment && (
+                              <div className="pt-1">
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() =>
+                                    void handleSimulateCashfreeSuccess(selectedPendingCashfreePayment)
+                                  }
+                                  disabled={
+                                    paymentActionKey ===
+                                    `cashfree-${selectedPendingCashfreePayment.id}`
+                                  }
+                                  isLoading={
+                                    paymentActionKey ===
+                                    `cashfree-${selectedPendingCashfreePayment.id}`
+                                  }
+                                  className="w-full"
+                                >
+                                  Simulate Cashfree Success
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {paymentError && (
                       <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                         {paymentError}
@@ -779,10 +1167,24 @@ export default function PaymentsPage() {
                       variant="primary"
                       isLoading={paymentLoading}
                       onClick={handleSubmitPayment}
-                      disabled={!selectedStudent || paymentLoading}
+                      disabled={!selectedStudent || paymentLoading || Boolean(selectedPendingSubmission)}
                       fullWidth
                     >
-                      Record Payment
+                      {selectedPendingSubmission
+                        ? 'Verification Pending'
+                        : 'Submit for Verification'}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleCreateCashfreeRequest}
+                      disabled={!selectedStudent || paymentLoading || Boolean(selectedPendingSubmission)}
+                      fullWidth
+                    >
+                      {selectedPendingSubmission
+                        ? 'Existing Request Pending'
+                        : 'Create Cashfree Request'}
                     </Button>
                   </div>
                 </Card>
@@ -966,7 +1368,7 @@ export default function PaymentsPage() {
                       <div>
                         <h3 className="text-lg font-bold text-gray-900">Recent Payments</h3>
                         <p className="mt-1 text-sm text-gray-600">
-                          Latest recorded renewals and their active coverage windows
+                          Pending and verified payments for your visible branches
                         </p>
                       </div>
                       <Badge variant="info">{recentPayments.length}</Badge>
@@ -976,9 +1378,9 @@ export default function PaymentsPage() {
                   {recentPayments.length === 0 ? (
                     <div className="p-10 text-center">
                       <Receipt className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-                      <p className="font-semibold text-gray-900">No payments recorded yet</p>
+                      <p className="font-semibold text-gray-900">No payments submitted yet</p>
                       <p className="mt-1 text-sm text-gray-600">
-                        Recorded payments will appear here.
+                        Submitted and verified payments will appear here.
                       </p>
                     </div>
                   ) : (
@@ -1044,25 +1446,66 @@ export default function PaymentsPage() {
                                 {payment.receipt_number}
                               </td>
                               <td className="px-6 py-4">
-                                <Badge variant="success">
-                                  {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                                <Badge variant={getPaymentStatusVariant(payment.status)}>
+                                  {getPaymentStatusLabel(payment.status)}
                                 </Badge>
                               </td>
                               <td className="px-6 py-4">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSendReceipt(payment)}
-                                  disabled={communicationActionKey === `receipt-${payment.id}`}
-                                  className={`font-medium transition-colors ${
-                                    communicationActionKey === `receipt-${payment.id}`
-                                      ? 'cursor-not-allowed text-gray-400'
-                                      : 'text-sky-600 hover:text-sky-700'
-                                  }`}
-                                >
-                                  {communicationActionKey === `receipt-${payment.id}`
-                                    ? 'Sending...'
-                                    : 'Resend Receipt'}
-                                </button>
+                                {payment.status === 'pending' ? (
+                                  isSuperAdmin ? (
+                                    <div className="space-y-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleConfirmPayment(payment)}
+                                        disabled={paymentActionKey === `confirm-${payment.id}`}
+                                        className={`font-medium transition-colors ${
+                                          paymentActionKey === `confirm-${payment.id}`
+                                            ? 'cursor-not-allowed text-gray-400'
+                                            : 'text-amber-700 hover:text-amber-800'
+                                        }`}
+                                      >
+                                        {paymentActionKey === `confirm-${payment.id}`
+                                          ? 'Confirming...'
+                                          : 'Confirm Payment'}
+                                      </button>
+                                      {payment.transaction_id?.startsWith('CFPAY-') && (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleSimulateCashfreeSuccess(payment)}
+                                          disabled={paymentActionKey === `cashfree-${payment.id}`}
+                                          className={`block font-medium transition-colors ${
+                                            paymentActionKey === `cashfree-${payment.id}`
+                                              ? 'cursor-not-allowed text-gray-400'
+                                              : 'text-sky-700 hover:text-sky-800'
+                                          }`}
+                                        >
+                                          {paymentActionKey === `cashfree-${payment.id}`
+                                            ? 'Simulating...'
+                                            : 'Simulate Cashfree'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-gray-500">
+                                      Awaiting superadmin verification
+                                    </span>
+                                  )
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSendReceipt(payment)}
+                                    disabled={communicationActionKey === `receipt-${payment.id}`}
+                                    className={`font-medium transition-colors ${
+                                      communicationActionKey === `receipt-${payment.id}`
+                                        ? 'cursor-not-allowed text-gray-400'
+                                        : 'text-sky-600 hover:text-sky-700'
+                                    }`}
+                                  >
+                                    {communicationActionKey === `receipt-${payment.id}`
+                                      ? 'Sending...'
+                                      : 'Resend Receipt'}
+                                  </button>
+                                )}
                               </td>
                             </motion.tr>
                           ))}

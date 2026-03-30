@@ -155,6 +155,7 @@ async function getTodayRevenue(branchId?: number): Promise<number> {
     FROM fee_payments p
     JOIN students s ON s.id = p.student_id
     WHERE DATE(p.payment_date) = CURRENT_DATE
+      AND p.status = 'paid'
   `;
 
   if (branchId != null) {
@@ -182,7 +183,7 @@ async function getRecentPayments(branchId?: number): Promise<DashboardRecentPaym
     FROM fee_payments p
     JOIN students s ON s.id = p.student_id
     JOIN branches b ON b.id = s.branch_id
-    WHERE 1 = 1
+    WHERE p.status = 'paid'
   `;
 
   if (branchId != null) {
@@ -240,6 +241,7 @@ async function getBranchOverview(): Promise<DashboardBranchOverview[]> {
         JOIN students s ON s.id = p.student_id
         WHERE EXTRACT(MONTH FROM p.payment_date) = EXTRACT(MONTH FROM CURRENT_DATE)
           AND EXTRACT(YEAR FROM p.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+          AND p.status = 'paid'
         GROUP BY s.branch_id
       ) pay ON pay.branch_id = b.id
       WHERE b.is_active = true

@@ -1,11 +1,33 @@
 import { Router } from 'express';
 import * as paymentController from './payments.controller.ts';
-import { authenticateToken } from '../../middleware/auth.middleware.ts';
+import {
+  authenticateToken,
+  requireSuperAdmin,
+} from '../../middleware/auth.middleware.ts';
 
 const router = Router();
 
 // All routes require authentication
+router.post('/cashfree/webhook', paymentController.handleCashfreeWebhook);
+router.post('/webhooks/confirm', paymentController.confirmPaymentWebhook);
+router.post(
+  '/cashfree/request',
+  authenticateToken,
+  paymentController.createCashfreePaymentRequest,
+);
+router.post(
+  '/cashfree/mock-success/:paymentId',
+  authenticateToken,
+  requireSuperAdmin,
+  paymentController.simulateCashfreeSuccess,
+);
 router.post('/', authenticateToken, paymentController.recordPayment);
+router.post(
+  '/:paymentId/confirm',
+  authenticateToken,
+  requireSuperAdmin,
+  paymentController.confirmPayment,
+);
 router.post('/reminders/send', authenticateToken, paymentController.sendPaymentReminder);
 router.post('/reminders/run-daily', authenticateToken, paymentController.runReminderBatch);
 router.post('/receipt/:paymentId/send', authenticateToken, paymentController.sendPaymentReceipt);
