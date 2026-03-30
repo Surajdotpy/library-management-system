@@ -66,6 +66,13 @@ export type {
   DashboardSummary,
 } from './dashboard.types';
 
+export type {
+  NotificationType,
+  NotificationSeverity,
+  NotificationItem,
+  NotificationList,
+} from './notification.types';
+
 export type { Branch } from './branch.types';
 export type { AdminUser, CreateAdminRequest } from './admin.types';
 export type {

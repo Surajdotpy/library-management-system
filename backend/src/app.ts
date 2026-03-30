@@ -5,6 +5,7 @@ import authRoutes from './modules/auth/auth.routes.ts';
 import attendanceRoutes from './modules/attendance/attendance.routes.ts';
 import branchRoutes from './modules/branches/branches.routes.ts';
 import dashboardRoutes from './modules/dashboard/dashboard.routes.ts';
+import notificationRoutes from './modules/notifications/notifications.routes.ts';
 import paymentRoutes from './modules/payments/payments.routes.ts';
 import seatRoutes from './modules/seats/seats.routes.ts';
 import studentRoutes from './modules/students/students.routes.ts';
@@ -49,6 +50,7 @@ app.get('/', (_req: Request, res: Response) => {
       health: '/health',
       auth: '/api/auth/login',
       dashboard: '/api/dashboard/summary',
+      notifications: '/api/notifications',
       branches: '/api/branches',
       admins: '/api/users/admins',
       students: '/api/students',
@@ -61,6 +63,7 @@ app.get('/', (_req: Request, res: Response) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/students', studentRoutes);

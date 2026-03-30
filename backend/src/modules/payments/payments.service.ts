@@ -1,4 +1,5 @@
 import pool from '../../config/db.ts';
+import * as notificationsService from '../notifications/notifications.service.ts';
 import type {
   Payment,
   PaymentAlertSummary,
@@ -605,6 +606,16 @@ export async function recordPayment(
     if (!createdPayment) {
       throw new Error('Payment record was not returned after creation');
     }
+
+    await notificationsService.createPaymentReceivedNotification(client, {
+      paymentId: createdPayment.id,
+      studentId: createdPayment.student_id,
+      studentName: studentRow.name,
+      branchId: studentRow.branch_id,
+      branchName: studentRow.branch_name,
+      amount: createdPayment.amount,
+      receiptNumber: createdPayment.receipt_number,
+    });
 
     await client.query('COMMIT');
 

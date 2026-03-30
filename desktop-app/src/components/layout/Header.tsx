@@ -4,6 +4,7 @@ import {
   Bell,
   ChevronDown,
   Clock3,
+  DollarSign,
   Info,
   LayoutDashboard,
   Loader2,
@@ -17,8 +18,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getBranchName } from '@/config/branches';
 import { routeLabels, routes } from '@/config/routes';
 import { clearStoredSession } from '@/lib/auth/session';
-import { dashboardApi } from '@/lib/api/dashboard';
-import type { DashboardNotification } from '@/types';
+import { notificationsApi } from '@/lib/api/notifications';
+import type { NotificationItem } from '@/types';
 
 interface HeaderProps {
   userName: string;
@@ -27,9 +28,13 @@ interface HeaderProps {
   branchId: number | null;
 }
 
-function notificationIcon(notification: DashboardNotification) {
+function notificationIcon(notification: NotificationItem) {
   if (notification.severity === 'critical') {
     return <AlertTriangle className="h-4 w-4" />;
+  }
+
+  if (notification.type === 'payment_received') {
+    return <DollarSign className="h-4 w-4" />;
   }
 
   if (notification.type.startsWith('attendance')) {
@@ -39,7 +44,7 @@ function notificationIcon(notification: DashboardNotification) {
   return <Info className="h-4 w-4" />;
 }
 
-function severityStyles(notification: DashboardNotification) {
+function severityStyles(notification: NotificationItem) {
   if (notification.severity === 'critical') {
     return 'bg-red-100 text-red-700';
   }
@@ -67,49 +72,47 @@ export function Header({
     (userRole === 'superadmin' ? 'Super Admin Dashboard' : 'Branch Dashboard');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [notifications, setNotifications] = useState<DashboardNotification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadNotifications() {
+  async function loadNotifications(silent: boolean = false) {
+    if (!silent) {
       setNotificationsLoading(true);
+    }
+
+    try {
+      const notificationData = await notificationsApi.getAll();
+      setNotifications(notificationData.notifications ?? []);
+      setUnreadCount(notificationData.unread_count ?? 0);
       setNotificationsError(null);
-
-      try {
-        const summary = await dashboardApi.getSummary(
-          userRole === 'superadmin' ? undefined : branchId ?? undefined,
-        );
-
-        if (!isMounted) {
-          return;
-        }
-
-        setNotifications(summary.notifications ?? []);
-      } catch (error: any) {
-        if (!isMounted) {
-          return;
-        }
-
-        setNotifications([]);
+    } catch (error: any) {
+      if (!silent) {
         setNotificationsError(
           error.response?.data?.error || error.message || 'Failed to load notifications',
         );
-      } finally {
-        if (isMounted) {
-          setNotificationsLoading(false);
-        }
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    } finally {
+      if (!silent) {
+        setNotificationsLoading(false);
       }
     }
+  }
 
+  useEffect(() => {
     void loadNotifications();
 
+    const intervalId = window.setInterval(() => {
+      void loadNotifications(true);
+    }, 15000);
+
     return () => {
-      isMounted = false;
+      window.clearInterval(intervalId);
     };
   }, [branchId, userRole, location.pathname]);
 
@@ -154,12 +157,29 @@ export function Header({
     setIsProfileMenuOpen(false);
   };
 
-  const handleNotificationNavigate = (path: string) => {
-    navigate(path);
+  const handleNotificationNavigate = (notification: NotificationItem) => {
+    if (!notification.is_read) {
+      setNotifications((currentNotifications) =>
+        currentNotifications.map((currentNotification) =>
+          currentNotification.id === notification.id
+            ? {
+                ...currentNotification,
+                is_read: true,
+                read_at: new Date().toISOString(),
+              }
+            : currentNotification,
+        ),
+      );
+      setUnreadCount((currentUnreadCount) => Math.max(0, currentUnreadCount - 1));
+
+      void notificationsApi.markAsRead(notification.id).catch((error) => {
+        console.error('Failed to mark notification as read.', error);
+      });
+    }
+
+    navigate(notification.action_route);
     setIsNotificationsOpen(false);
   };
-
-  const unreadCount = notifications.length;
 
   return (
     <motion.header
@@ -218,12 +238,12 @@ export function Header({
                   <div>
                     <p className="text-sm font-semibold text-gray-900">Notifications</p>
                     <p className="text-xs text-gray-500">
-                      Live renewal and attendance alerts for your access scope
+                      Payment updates for your access scope
                     </p>
                   </div>
                   {!notificationsLoading && unreadCount > 0 && (
                     <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">
-                      {unreadCount} active
+                      {unreadCount} unread
                     </span>
                   )}
                 </div>
@@ -239,7 +259,7 @@ export function Header({
                   </div>
                 ) : notifications.length === 0 ? (
                   <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
-                    No urgent renewals or attendance warnings right now.
+                    No payment notifications yet.
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -247,8 +267,12 @@ export function Header({
                       <button
                         key={notification.id}
                         type="button"
-                        onClick={() => handleNotificationNavigate(notification.action_route)}
-                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left transition-colors hover:border-gray-200 hover:bg-white"
+                        onClick={() => handleNotificationNavigate(notification)}
+                        className={`w-full rounded-2xl border p-3 text-left transition-colors hover:border-gray-200 hover:bg-white ${
+                          notification.is_read
+                            ? 'border-gray-100 bg-white'
+                            : 'border-purple-100 bg-purple-50/40'
+                        }`}
                       >
                         <div className="mb-2 flex items-start gap-3">
                           <div className={`rounded-xl p-2 ${severityStyles(notification)}`}>
@@ -259,14 +283,27 @@ export function Header({
                               <p className="text-sm font-semibold text-gray-900">
                                 {notification.title}
                               </p>
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${severityStyles(notification)}`}
-                              >
-                                {notification.severity}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                {!notification.is_read && (
+                                  <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
+                                )}
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${severityStyles(notification)}`}
+                                >
+                                  {notification.severity}
+                                </span>
+                              </div>
                             </div>
                             <p className="mt-1 text-sm text-gray-600">
                               {notification.description}
+                            </p>
+                            <p className="mt-2 text-xs text-gray-500">
+                              {new Date(notification.created_at).toLocaleString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
                             </p>
                             {userRole === 'superadmin' && notification.branch_name && (
                               <p className="mt-2 text-xs font-medium text-gray-500">
