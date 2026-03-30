@@ -1,94 +1,70 @@
-# Study Library Management System - Backend
+# Library Management System
 
-## Setup Complete ✅
+Current repo status as of March 30, 2026:
 
-### Database
-- PostgreSQL 18.2
-- 6 tables created
-- 2000+ rows of data
+- Backend API is implemented for auth, dashboard, branches, users/admins, students, attendance, payments, seats, and reports.
+- Desktop app is implemented in Electron + React and can be packaged for Windows.
+- Backend automated coverage is in place and currently passing.
 
-### Backend
-- Node.js + TypeScript
-- Express.js server
-- Production-ready structure
+## Project Structure
 
-### Run Server
+- `backend/` - Express + TypeScript API with PostgreSQL
+- `desktop-app/` - Electron desktop client built with React + Vite
+- `docs/` - setup and reference notes
+
+## Backend Setup
+
+1. Copy `backend/.env.example` to `backend/.env`.
+2. Fill in the `DATABASE_*`, `JWT_*`, `PORT`, and `FRONTEND_URL` values.
+3. Run migrations:
+
+```bash
+cd backend
+npm run db:migrate
+```
+
+4. Start the API:
+
 ```bash
 npm run dev
 ```
 
-### Endpoints
-- GET  http://localhost:5000/ - API info
-- GET  http://localhost:5000/health - Health check
+Important endpoints:
 
-### Next Steps
-- Create Students API endpoints
-- Create Attendance API endpoints
-- Create Payments API endpoints
-- Build Desktop App (Electron)
+- `GET /health`
+- `POST /api/auth/login`
+- `GET /api/dashboard/summary`
+- `GET /api/students`
+- `GET /api/seats`
+- `GET /api/payments`
+- `GET /api/reports/overview`
+
+## Desktop App Setup
+
+1. Copy `desktop-app/.env.example` to `desktop-app/.env`.
+2. Set `VITE_API_BASE_URL`.
+3. Start the app in development:
+
+```bash
+cd desktop-app
+npm run electron:dev
 ```
 
----
+## Windows Release
 
-## **🎯 What's Next (When You Continue):**
+From `desktop-app/`:
 
-### **PATH A: Create API Endpoints**
-
-**We'll build in this order:**
-
-**1. Students Module (First):**
-```
-POST   /api/students       - Register new student
-GET    /api/students       - List all students
-GET    /api/students/:id   - Get one student
-PUT    /api/students/:id   - Update student
-DELETE /api/students/:id   - Delete student
+```bash
+npm run electron:build:win
 ```
 
-**2. Authentication (Second):**
-```
-POST   /api/auth/login     - Admin login
-POST   /api/auth/logout    - Admin logout
-GET    /api/auth/me        - Get current admin
-```
+Artifacts are written to `desktop-app/release/`.
 
-**3. Attendance (Third):**
-```
-POST   /api/attendance/entry  - Mark entry
-PUT    /api/attendance/exit   - Mark exit
-GET    /api/attendance        - Get attendance records
-```
+## Release Checklist
 
-**4. Payments (Fourth):**
-```
-POST   /api/payments       - Record payment
-GET    /api/payments       - List payments
-```
-
-**5. Reports (Fifth):**
-```
-GET    /api/reports/monthly    - Monthly report
-GET    /api/reports/student    - Student report
-```
-
----
-
-## **📊 Progress Summary:**
-```
-COMPLETED:
-✅ Database Design (100%)
-✅ Database Implementation (100%)
-✅ Backend Foundation (100%)
-✅ Server Setup (100%)
-
-PENDING:
-⏭️ API Endpoints (0%)
-⏭️ Authentication (0%)
-⏭️ Desktop App (0%)
-⏭️ Deployment (0%)
-
-OVERALL PROGRESS: 40% Complete
-
-
-
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoic3VwZXJhZG1pbkBsaWJyYXJ5LmNvbSIsInJvbGUiOiJzdXBlcmFkbWluIiwiYnJhbmNoX2lkIjpudWxsLCJpYXQiOjE3NzMwNTk0NjMsImV4cCI6MTc3MzY2NDI2M30.XcFIyemkMTrcdGCntndtAN1nzh4xPS0CqLCzlL-5Knk
+- Backend `.env` points to the production database.
+- `backend npm test` passes.
+- Database migrations are applied with `npm run db:migrate`.
+- Desktop build uses the correct `VITE_API_BASE_URL`.
+- `desktop-app npm run electron:build:win` completes successfully.
+- Install and smoke test the generated Windows installer on a clean machine before public rollout.

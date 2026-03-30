@@ -1,0 +1,34 @@
+# Workspace-level ignores
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor settings
+.vscode/
+.idea/
+
+# Root dependency folders
+node_modules/
+
+# Backend local files
+backend/.env
+backend/.env.local
+backend/.env.production
+backend/dist/
+backend/coverage/
+
+# Desktop app local files
+desktop-app/.env
+desktop-app/.env.local
+desktop-app/.env.development
+desktop-app/.env.production
+desktop-app/dist/
+desktop-app/release/
+desktop-app/out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

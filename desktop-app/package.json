@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "Library Management System for Coffee aur Kitaab",
-  "author": "Your Name",
+  "author": "Coffee aur Kitaab",
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {
@@ -17,7 +17,7 @@
   "build": {
     "appId": "com.coffeeaurkitaab.library",
     "productName": "Coffee aur Kitaab",
-    "copyright": "Copyright © 2026 Coffee aur Kitaab",
+    "copyright": "Copyright (c) 2026 Coffee aur Kitaab",
     "directories": {
       "output": "release"
     },
@@ -27,14 +27,16 @@
       "package.json"
     ],
     "win": {
-  "target": [
-    {
-      "target": "nsis",
-      "arch": ["x64"]
-    }
-  ],
-  "icon": "public/icon.png"
-},
+      "icon": "icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
