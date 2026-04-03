@@ -422,7 +422,8 @@ export async function getAllPayments(req: AuthRequest, res: Response) {
     const requestedBranchId = parseBranchId(req.query.branch_id);
     const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
 
-    if (Number.isNaN(requestedBranchId)) {
+    // Only validate if branch_id was actually provided in query
+    if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
 
@@ -461,7 +462,8 @@ export async function getPendingPayments(req: AuthRequest, res: Response) {
   try {
     const requestedBranchId = parseBranchId(req.query.branch_id);
 
-    if (Number.isNaN(requestedBranchId)) {
+    // Only validate if branch_id was actually provided in query
+    if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
 
@@ -579,10 +581,11 @@ export async function getPaymentCommunications(req: AuthRequest, res: Response) 
     const paymentId = parseInteger(req.query.payment_id);
     const limit = parseInteger(req.query.limit) ?? 50;
 
+    // Only validate if values were actually provided (not undefined)
     if (
-      Number.isNaN(requestedBranchId) ||
-      Number.isNaN(studentId) ||
-      Number.isNaN(paymentId) ||
+      (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) ||
+      (studentId !== undefined && Number.isNaN(studentId)) ||
+      (paymentId !== undefined && Number.isNaN(paymentId)) ||
       Number.isNaN(limit)
     ) {
       return badRequest(res, 'Invalid communications query');

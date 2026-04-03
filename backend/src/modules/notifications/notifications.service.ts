@@ -122,7 +122,7 @@ async function getUnreadCountForUser(user: JWTPayload): Promise<number> {
     WHERE nr.notification_id IS NULL
   `;
 
-  if (visibleBranchId != null) {
+  if (visibleBranchId !== undefined && visibleBranchId !== null) {
     params.push(visibleBranchId);
     query += ` AND n.branch_id = $${params.length}`;
   }
@@ -159,7 +159,7 @@ export async function getNotificationsForUser(
     WHERE 1 = 1
   `;
 
-  if (visibleBranchId != null) {
+  if (visibleBranchId !== undefined && visibleBranchId !== null) {
     params.push(visibleBranchId);
     query += ` AND n.branch_id = $${params.length}`;
   }
@@ -196,7 +196,7 @@ export async function markNotificationAsRead(
     WHERE id = $1
   `;
 
-  if (visibleBranchId != null) {
+  if (visibleBranchId !== undefined && visibleBranchId !== null) {
     params.push(visibleBranchId);
     query += ` AND branch_id = $${params.length}`;
   }
@@ -220,4 +220,44 @@ export async function markNotificationAsRead(
   );
 
   return true;
+}
+
+export async function markAllNotificationsAsRead(user: JWTPayload): Promise<number> {
+  const visibleBranchId = getVisibleBranchId(user);
+  const params: Array<number> = [user.userId];
+
+  // Find all unread notification IDs visible to this user
+  let selectQuery = `
+    SELECT n.id
+    FROM notifications n
+    LEFT JOIN notification_reads nr
+      ON nr.notification_id = n.id
+     AND nr.user_id = $1
+    WHERE nr.notification_id IS NULL
+  `;
+
+  if (visibleBranchId !== undefined && visibleBranchId !== null) {
+    params.push(visibleBranchId);
+    selectQuery += ` AND n.branch_id = $${params.length}`;
+  }
+
+  const unreadResult = await pool.query<{ id: number }>(selectQuery, params);
+
+  if (unreadResult.rows.length === 0) {
+    return 0;
+  }
+
+  const unreadIds = unreadResult.rows.map((row) => row.id);
+
+  // Bulk insert reads for all unread notifications
+  await pool.query(
+    `
+      INSERT INTO notification_reads (notification_id, user_id, read_at)
+      SELECT unnest($1::int[]), $2, NOW()
+      ON CONFLICT (notification_id, user_id) DO NOTHING
+    `,
+    [unreadIds, user.userId],
+  );
+
+  return unreadIds.length;
 }

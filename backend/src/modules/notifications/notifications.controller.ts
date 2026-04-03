@@ -92,3 +92,31 @@ export async function markNotificationAsRead(req: AuthRequest, res: Response) {
     });
   }
 }
+
+export async function markAllNotificationsAsRead(req: AuthRequest, res: Response) {
+  try {
+    const user = requireAuthenticatedUser(req.user);
+    const markedCount = await notificationsService.markAllNotificationsAsRead(user);
+
+    res.status(200).json({
+      success: true,
+      message: `${markedCount} notification(s) marked as read`,
+      data: {
+        marked_count: markedCount,
+      },
+    });
+  } catch (error) {
+    if (isAuthorizationError(error)) {
+      return res.status((error as any).statusCode).json({
+        success: false,
+        error: (error as any).message,
+      });
+    }
+
+    console.error('Mark all notifications as read error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to mark all notifications as read',
+    });
+  }
+}

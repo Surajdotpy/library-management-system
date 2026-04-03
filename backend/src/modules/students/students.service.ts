@@ -58,7 +58,7 @@ export async function getAllStudents(
     query += ' AND is_active = true';
   }
 
-  if (branchId != null) {
+  if (branchId !== undefined && branchId !== null) {
     values.push(branchId);
     query += ` AND branch_id = $${values.length}`;
   }
@@ -81,7 +81,7 @@ export async function getStudentById(
     WHERE id = $1 AND is_active = true
   `;
 
-  if (branchId != null) {
+  if (branchId !== undefined && branchId !== null) {
     values.push(branchId);
     query += ` AND branch_id = $${values.length}`;
   }

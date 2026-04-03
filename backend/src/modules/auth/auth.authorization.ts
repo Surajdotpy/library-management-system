@@ -24,10 +24,12 @@ export function resolveAuthorizedBranchId(
   user: JWTPayload,
   requestedBranchId?: number,
 ): number | undefined {
+  // For superadmin: return requested branch id if provided, otherwise undefined (global access)
   if (user.role === 'superadmin') {
     return requestedBranchId;
   }
 
+  // For branch admins: must have a branch_id configured
   if (user.branch_id == null) {
     throw new AuthorizationError(
       403,
@@ -35,6 +37,7 @@ export function resolveAuthorizedBranchId(
     );
   }
 
+  // Branch admins can only access their assigned branch
   if (requestedBranchId != null && requestedBranchId !== user.branch_id) {
     throw new AuthorizationError(
       403,

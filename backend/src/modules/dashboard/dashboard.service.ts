@@ -139,7 +139,7 @@ async function getStudentStats(branchId?: number) {
     WHERE 1 = 1
   `;
 
-  if (branchId != null) {
+  if (branchId !== undefined && branchId !== null) {
     params.push(branchId);
     query += ` AND branch_id = $${params.length}`;
   }
@@ -158,7 +158,7 @@ async function getTodayRevenue(branchId?: number): Promise<number> {
       AND p.status = 'paid'
   `;
 
-  if (branchId != null) {
+  if (branchId !== undefined && branchId !== null) {
     params.push(branchId);
     query += ` AND s.branch_id = $${params.length}`;
   }
@@ -186,7 +186,7 @@ async function getRecentPayments(branchId?: number): Promise<DashboardRecentPaym
     WHERE p.status = 'paid'
   `;
 
-  if (branchId != null) {
+  if (branchId !== undefined && branchId !== null) {
     params.push(branchId);
     query += ` AND s.branch_id = $${params.length}`;
   }

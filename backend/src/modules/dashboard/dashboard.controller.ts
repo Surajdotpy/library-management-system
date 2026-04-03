@@ -20,7 +20,8 @@ export async function getSummary(req: AuthRequest, res: Response) {
       ? Number.parseInt(req.query.branch_id as string, 10)
       : undefined;
 
-    if (Number.isNaN(requestedBranchId)) {
+    // Only validate if branch_id was actually provided in query
+    if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
 

@@ -206,7 +206,7 @@ async function getLockedPaymentRecord(
     WHERE p.id = $1
   `;
 
-  if (branchId != null) {
+  if (branchId !== undefined && branchId !== null) {
     params.push(branchId);
     query += ` AND s.branch_id = $${params.length}`;
   }

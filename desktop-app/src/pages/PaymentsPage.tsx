@@ -230,7 +230,7 @@ export default function PaymentsPage() {
   const [communicationActionKey, setCommunicationActionKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentForm, setPaymentForm] = useState<RecordPaymentRequest>({
-    student_id: 0,
+    student_id: undefined as any,
     amount: 0,
     payment_method: 'upi',
     transaction_id: '',
@@ -295,10 +295,11 @@ export default function PaymentsPage() {
     let isMounted = true;
 
     async function loadStudentPayments() {
-      if (!paymentForm.student_id) {
-        setSelectedStudentPayments([]);
-        return;
-      }
+      if (!paymentForm.student_id || paymentForm.student_id <= 0) {
+  setSelectedStudentPayments([]);
+  return;
+}
+      
 
       setSelectedStudentPaymentsLoading(true);
 

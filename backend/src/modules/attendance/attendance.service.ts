@@ -23,7 +23,7 @@ async function verifyStudentAccess(
     WHERE id = $1 AND is_active = true
   `;
 
-  if (branchId != null) {
+  if (branchId !== undefined && branchId !== null) {
     params.push(branchId);
     query += ` AND branch_id = $${params.length}`;
   }

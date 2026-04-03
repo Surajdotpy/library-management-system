@@ -53,7 +53,8 @@ export async function getStudents(req: AuthRequest, res: Response) {
     const requestedBranchId = parseBranchId(req.query.branch_id);
     const includeInactive = parseIncludeInactive(req.query.include_inactive);
 
-    if (Number.isNaN(requestedBranchId)) {
+    // Only validate if branch_id was actually provided in query
+    if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
 
