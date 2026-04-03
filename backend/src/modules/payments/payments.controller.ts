@@ -764,3 +764,37 @@ export async function sendPaymentReceipt(req: AuthRequest, res: Response) {
     });
   }
 }
+
+// GET /api/payments/:paymentId - Get single payment (PUBLIC for student page)
+export async function getPaymentById(req: Request, res: Response) {
+  try {
+    const paymentId = Number.parseInt(req.params.paymentId as string, 10);
+
+    if (Number.isNaN(paymentId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid payment ID',
+      });
+    }
+
+    const payment = await paymentService.getPaymentById(paymentId);
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Payment not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: payment,
+    });
+  } catch (error) {
+    console.error('Get payment by id error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch payment',
+    });
+  }
+}

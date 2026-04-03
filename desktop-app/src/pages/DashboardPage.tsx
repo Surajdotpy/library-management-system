@@ -15,6 +15,9 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Badge, Card } from '@/components/ui';
 import { getStoredUser } from '@/lib/auth/session';
 import { useDashboardSummary } from '@/lib/hooks/useDashboardSummary';
+import { io } from "socket.io-client";
+import { useEffect, useState } from "react";
+const [notifications, setNotifications] = useState<any[]>([]);
 
 function formatCurrency(amount: number): string {
   return `Rs ${amount.toLocaleString('en-IN')}`;
@@ -56,7 +59,34 @@ function notificationBadgeStyles(severity: 'critical' | 'warning' | 'info'): str
   return 'bg-blue-100 text-blue-700';
 }
 
+
+
 export default function DashboardPage() {
+  
+  useEffect(() => {
+  const socket = io("http://localhost:5000");
+
+  socket.on("connect", () => {
+    console.log("✅ Connected to socket:", socket.id);
+  });
+
+  socket.onAny((event, data) => {
+    console.log("EVENT:", event, data);
+  });
+
+  socket.on("payment_received", (data: any) => {
+    console.log("🔥 Payment event:", data);
+
+    if (data?.message) {
+      setNotifications((prev) => [data, ...prev]); // ✅ ADD TO UI
+    }
+  });
+
+  return () => {
+    socket.disconnect();
+  };
+}, []);
+
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
   const branchId = isSuperAdmin ? undefined : currentUser?.branch_id ?? undefined;
@@ -69,7 +99,27 @@ export default function DashboardPage() {
     : `You are viewing the live operating dashboard for ${branchLabel}. All data here is limited to your branch.`;
 
   return (
+
     <MainLayout>
+      <div style={{ marginBottom: "20px" }}>
+  <h2>🔔 Notifications</h2>
+
+  {notifications.length === 0 && <p>No notifications yet</p>}
+
+  {notifications.map((n, i) => (
+    <div
+      key={i}
+      style={{
+        background: "#f1f1f1",
+        padding: "10px",
+        marginBottom: "5px",
+        borderRadius: "6px",
+      }}
+    >
+      {n.message}
+    </div>
+  ))}
+</div>
       <div className="space-y-6">
         <motion.div
           initial={{ opacity: 0, y: -20 }}

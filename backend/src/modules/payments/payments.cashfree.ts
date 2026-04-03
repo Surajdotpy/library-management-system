@@ -98,6 +98,7 @@ function extractUpiIntent(payload: Record<string, unknown> | null): string | nul
 
 function getMode(): PaymentGatewayMode {
   const configuredMode = env.cashfreeMode;
+  console.log("CASHFREE_MODE from env:", env.cashfreeMode);
 
   if (
     configuredMode === 'mock' ||

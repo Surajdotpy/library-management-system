@@ -27,7 +27,6 @@ interface HeaderProps {
   userRole: 'superadmin' | 'admin';
   branchId: number | null;
 }
-
 function notificationIcon(notification: NotificationItem) {
   if (notification.severity === 'critical') {
     return <AlertTriangle className="h-4 w-4" />;
@@ -37,13 +36,12 @@ function notificationIcon(notification: NotificationItem) {
     return <DollarSign className="h-4 w-4" />;
   }
 
-  if (notification.type.startsWith('attendance')) {
+  if ((notification.type as string).startsWith('attendance')) {
     return <Clock3 className="h-4 w-4" />;
   }
 
   return <Info className="h-4 w-4" />;
 }
-
 function severityStyles(notification: NotificationItem) {
   if (notification.severity === 'critical') {
     return 'bg-red-100 text-red-700';
@@ -105,7 +103,7 @@ export function Header({
   }
 
   useEffect(() => {
-    void loadNotifications();
+    //void loadNotifications();
 
     const intervalId = window.setInterval(() => {
       void loadNotifications(true);

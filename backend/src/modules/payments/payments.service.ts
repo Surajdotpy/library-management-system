@@ -999,6 +999,16 @@ async function confirmPendingPayment(input: {
     });
 
     await client.query('COMMIT');
+   console.log("🔥 EMITTING SOCKET EVENT");
+
+const io = (global as any).io;
+
+if (io) {
+  io.emit("payment_received", {
+    message: `₹${confirmedPayment.amount} received`,
+    paymentId: confirmedPayment.id,
+  });
+}
 
     try {
       await sendPaymentReceipt(
@@ -1665,4 +1675,13 @@ export async function getPaymentByReceiptNumber(
 
   const result = await pool.query<PaymentWithStudent>(query, params);
   return result.rows[0] ?? null;
+}
+
+export async function getPaymentById(paymentId: number) {
+  const result = await pool.query(
+    'SELECT * FROM fee_payments WHERE id = $1',
+    [paymentId]
+  );
+
+  return result.rows[0];
 }

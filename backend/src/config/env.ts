@@ -18,9 +18,11 @@ export const env = {
     jwtSecret: process.env.JWT_SECRET || "",
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
     paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || "",
-    cashfreeMode: process.env.CASHFREE_MODE || "mock",
+    cashfreeMode: process.env.CASHFREE_MODE?.trim() || "mock",
     cashfreeAppId: process.env.CASHFREE_APP_ID || "",
     cashfreeSecretKey: process.env.CASHFREE_SECRET_KEY || "",
     cashfreeWebhookSecret: process.env.CASHFREE_WEBHOOK_SECRET || "",
     cashfreeApiVersion: process.env.CASHFREE_API_VERSION || "2025-01-01",
 };
+console.log("ENV CASHFREE_MODE:", process.env.CASHFREE_MODE);
+console.log("FINAL cashfreeMode:", process.env.CASHFREE_MODE?.trim());
