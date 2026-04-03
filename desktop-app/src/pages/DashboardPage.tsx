@@ -17,7 +17,7 @@ import { getStoredUser } from '@/lib/auth/session';
 import { useDashboardSummary } from '@/lib/hooks/useDashboardSummary';
 import { io } from "socket.io-client";
 import { useEffect, useState } from "react";
-const [notifications, setNotifications] = useState<any[]>([]);
+
 
 function formatCurrency(amount: number): string {
   return `Rs ${amount.toLocaleString('en-IN')}`;
@@ -62,6 +62,7 @@ function notificationBadgeStyles(severity: 'critical' | 'warning' | 'info'): str
 
 
 export default function DashboardPage() {
+  const [notifications, setNotifications] = useState<any[]>([]);
   
   useEffect(() => {
   const socket = io("http://localhost:5000");
@@ -79,6 +80,7 @@ export default function DashboardPage() {
 
     if (data?.message) {
       setNotifications((prev) => [data, ...prev]); // ✅ ADD TO UI
+       refreshSummary(); 
     }
   });
 

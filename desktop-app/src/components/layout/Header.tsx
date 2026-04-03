@@ -20,6 +20,7 @@ import { routeLabels, routes } from '@/config/routes';
 import { clearStoredSession } from '@/lib/auth/session';
 import { notificationsApi } from '@/lib/api/notifications';
 import type { NotificationItem } from '@/types';
+import { io } from "socket.io-client";
 
 interface HeaderProps {
   userName: string;
@@ -85,7 +86,8 @@ export function Header({
     try {
       const notificationData = await notificationsApi.getAll();
       setNotifications(notificationData.notifications ?? []);
-      setUnreadCount(notificationData.unread_count ?? 0);
+    setUnreadCount(notificationData.unread_count ?? 0);
+
       setNotificationsError(null);
     } catch (error: any) {
       if (!silent) {
@@ -103,7 +105,7 @@ export function Header({
   }
 
   useEffect(() => {
-    //void loadNotifications();
+    void loadNotifications();
 
     const intervalId = window.setInterval(() => {
       void loadNotifications(true);
@@ -154,6 +156,45 @@ export function Header({
     navigate(path);
     setIsProfileMenuOpen(false);
   };
+
+ useEffect(() => {
+  const socket = io("http://localhost:5000"); // ✅ INSIDE
+
+  socket.on("connect", () => {
+    console.log("🔔 Header connected:", socket.id);
+  });
+
+  socket.on("payment_received", (data: any) => {
+    console.log("🔔 Header event:", data);
+
+    const newNotification: NotificationItem = {
+      id: Date.now(),
+      type: "payment_received",
+      title: "Payment Received",
+      description: data?.message || "New payment received",
+      severity: "info",
+      is_read: false,
+      created_at: new Date().toISOString(),
+
+      branch_id: branchId ?? 0,
+      branch_name: "Your Branch",
+      action_route: "/payments",
+      read_at: null,
+      metadata: {}, // ✅ REQUIRED
+    };
+
+    setNotifications((prev) => [newNotification, ...prev]);
+   // setUnreadCount((prev) => prev + 1);
+
+    setTimeout(() => {
+      loadNotifications(true);
+    }, 500);
+  });
+
+  return () => {
+    socket.disconnect();
+  };
+}, []);
 
   const handleNotificationNavigate = (notification: NotificationItem) => {
     if (!notification.is_read) {
@@ -217,11 +258,12 @@ export function Header({
             aria-label="Open notifications"
           >
             <Bell className="h-5 w-5 text-gray-600" />
-            {!notificationsLoading && unreadCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {unreadCount}
-              </span>
-            )}
+            
+{unreadCount > 0 && (
+  <span className="absolute right-1 top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+    {unreadCount}
+  </span>
+)}
           </button>
 
           <AnimatePresence>
