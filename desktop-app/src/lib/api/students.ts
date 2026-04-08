@@ -15,6 +15,18 @@ export const studentsApi = {
     return response.data.data || [];
   },
 
+  async search(query: string, options: { includeInactive?: boolean; limit?: number } = {}): Promise<Student[]> {
+    const response = await apiClient.get<ApiResponse<Student[]>>('/students', {
+      params: {
+        include_inactive: options.includeInactive ? true : undefined,
+        search: query,
+        limit: options.limit,
+      },
+    });
+
+    return response.data.data || [];
+  },
+
   async getById(id: number): Promise<Student> {
     const response = await apiClient.get<ApiResponse<Student>>(`/students/${id}`);
     if (!response.data.data) {

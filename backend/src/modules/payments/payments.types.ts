@@ -201,6 +201,20 @@ export interface CashfreePaymentSession {
 export interface CashfreePaymentRequestResult {
   payment: Payment;
   session: CashfreePaymentSession;
+  public_payment_url: string;
+  public_access_expires_at: Date | null;
+}
+
+export interface PublicPaymentDetails {
+  id: number;
+  student_name: string;
+  branch_name: string;
+  amount: number;
+  status: PaymentStatus;
+  receipt_number: string;
+  gateway_upi_intent: string | null;
+  gateway_checkout_url: string | null;
+  gateway_expires_at: Date | null;
 }
 
 // Receipt data for WhatsApp/Email (Phase 3)
@@ -233,6 +247,23 @@ export interface PaymentCommunicationQueryOptions {
   student_id?: number;
   payment_id?: number;
   limit?: number;
+}
+
+export interface PaymentHistoryQueryOptions {
+  month?: number;
+  year?: number;
+  branchId?: number;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaymentHistoryPage {
+  payments: PaymentWithStudent[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface PaymentReminderBatchResult {

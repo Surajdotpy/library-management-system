@@ -26,6 +26,10 @@ export interface DashboardRecentPayment {
   payment_id: number;
   amount: number;
   payment_date: Date;
+  status: 'paid' | 'pending' | 'failed' | 'refunded';
+  activity_at: Date;
+  submitted_at: Date;
+  verified_at: Date | null;
   receipt_number: string;
   student_id: number;
   student_name: string;

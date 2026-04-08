@@ -9,6 +9,7 @@ import type {
   PaymentReminderBatchResult,
   MonthlyRevenue,
   Payment,
+  PaginatedResponse,
   PaymentQueryOptions,
   PaymentReceipt,
   PendingPayment,
@@ -71,16 +72,26 @@ export const paymentsApi = {
     return response.data.data;
   },
 
-  async getAll(options: PaymentQueryOptions = {}): Promise<Payment[]> {
-    const response = await apiClient.get<ApiResponse<Payment[]>>('/payments', {
+  async getAll(options: PaymentQueryOptions = {}): Promise<PaginatedResponse<Payment>> {
+    const response = await apiClient.get<ApiResponse<PaginatedResponse<Payment>>>('/payments', {
       params: {
         month: options.month,
         year: options.year,
+        search: options.search,
+        page: options.page,
         limit: options.limit,
       },
     });
 
-    return response.data.data || [];
+    return (
+      response.data.data || {
+        data: [],
+        total: 0,
+        page: options.page ?? 1,
+        limit: options.limit ?? 25,
+        totalPages: 1,
+      }
+    );
   },
 
   async getStudentPayments(studentId: number): Promise<Payment[]> {
@@ -158,6 +169,27 @@ export const paymentsApi = {
     }
 
     return response.data.data;
+  },
+
+  async downloadMonthlyHistoryPdf(year: number, month: number): Promise<void> {
+    const response = await apiClient.get<Blob>(`/payments/export/monthly-pdf/${year}/${month}`, {
+      responseType: 'blob',
+      timeout: 30000,
+    });
+
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const dispositionHeader = response.headers['content-disposition'];
+    const filenameMatch = dispositionHeader?.match(/filename=\"?([^"]+)\"?/i);
+    const filename = filenameMatch?.[1] || `payment-history-${year}-${month}.pdf`;
+    const link = document.createElement('a');
+
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
   },
 
   async sendReceipt(

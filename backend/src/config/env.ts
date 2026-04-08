@@ -1,10 +1,4 @@
-import dotenv from "dotenv";
-
-if (process.env.NODE_ENV === "test") {
-    dotenv.config({ path: ".env.test" });
-} else {
-    dotenv.config();
-}
+import './load-env.ts';
 
 export const env = {
     nodeEnv: process.env.NODE_ENV || "development",
@@ -24,5 +18,3 @@ export const env = {
     cashfreeWebhookSecret: process.env.CASHFREE_WEBHOOK_SECRET || "",
     cashfreeApiVersion: process.env.CASHFREE_API_VERSION || "2025-01-01",
 };
-console.log("ENV CASHFREE_MODE:", process.env.CASHFREE_MODE);
-console.log("FINAL cashfreeMode:", process.env.CASHFREE_MODE?.trim());

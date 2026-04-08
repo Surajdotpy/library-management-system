@@ -43,6 +43,7 @@ export type {
   CreateCashfreePaymentRequest,
   PaymentGatewaySession,
   CashfreePaymentRequestResult,
+  PublicPaymentDetails,
   PaymentDueStatus,
   PaymentCommunicationType,
   PaymentCommunicationChannel,

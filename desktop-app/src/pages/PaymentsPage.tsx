@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CircleAlert,
   Copy,
+  Download,
   DollarSign,
   ExternalLink,
   Loader2,
@@ -17,6 +18,7 @@ import {
   Smartphone,
   Wallet,
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Badge, Button, Card, Input } from '@/components/ui';
 import { getBranchName } from '@/config/branches';
@@ -202,13 +204,24 @@ function getPaymentStatusLabel(status: Payment['status']): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+interface PaymentsPageLocationState {
+  historySearchQuery?: string;
+  historyMonthFilter?: number;
+  historyYearFilter?: number;
+}
+
 export default function PaymentsPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
   const branchLabel = isSuperAdmin
     ? 'All Branches'
     : getBranchName(currentUser?.branch_id ?? null);
   const currentDate = new Date();
+  const currentMonth = currentDate.getMonth() + 1;
+  const currentYear = currentDate.getFullYear();
+  const historyPageSize = 25;
 
   const [students, setStudents] = useState<Student[]>([]);
   const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
@@ -229,6 +242,15 @@ export default function PaymentsPage() {
   const [communicationSuccess, setCommunicationSuccess] = useState<string | null>(null);
   const [communicationActionKey, setCommunicationActionKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [appliedHistorySearchQuery, setAppliedHistorySearchQuery] = useState('');
+  const [historyMonthFilter, setHistoryMonthFilter] = useState<number | 'all'>(currentMonth);
+  const [historyYearFilter, setHistoryYearFilter] = useState<number | 'all'>(currentYear);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPayments, setHistoryTotalPayments] = useState(0);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyExporting, setHistoryExporting] = useState(false);
+  const [historyExportError, setHistoryExportError] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState<RecordPaymentRequest>({
     student_id: undefined as any,
     amount: 0,
@@ -255,20 +277,29 @@ export default function PaymentsPage() {
       ] =
         await Promise.all([
           studentsApi.getAll(),
-          paymentsApi.getAll({ limit: 25 }),
           paymentsApi.getAll({
-            month: currentDate.getMonth() + 1,
-            year: currentDate.getFullYear(),
-            limit: 500,
+            ...(historyMonthFilter !== 'all' ? { month: historyMonthFilter } : {}),
+            ...(historyYearFilter !== 'all' ? { year: historyYearFilter } : {}),
+            ...(appliedHistorySearchQuery ? { search: appliedHistorySearchQuery } : {}),
+            page: historyPage,
+            limit: historyPageSize,
+          }),
+          paymentsApi.getAll({
+            month: currentMonth,
+            year: currentYear,
+            page: 1,
+            limit: 100,
           }),
           paymentsApi.getPending(),
           paymentsApi.getCommunications({ limit: 40 }),
-          paymentsApi.getMonthlyRevenue(currentDate.getFullYear(), currentDate.getMonth() + 1),
+          paymentsApi.getMonthlyRevenue(currentYear, currentMonth),
         ]);
 
       setStudents(studentData);
-      setRecentPayments(latestPayments);
-      setCurrentMonthPayments(monthlyPayments);
+      setRecentPayments(latestPayments.data);
+      setHistoryTotalPayments(latestPayments.total);
+      setHistoryTotalPages(latestPayments.totalPages);
+      setCurrentMonthPayments(monthlyPayments.data);
       setPendingPayments(pendingData);
       setCommunicationHistory(communicationData);
       setMonthlyRevenue(revenueData);
@@ -289,7 +320,51 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     void fetchPaymentsData();
-  }, []);
+  }, [appliedHistorySearchQuery, historyMonthFilter, historyPage, historyYearFilter]);
+
+  useEffect(() => {
+    const state = location.state as PaymentsPageLocationState | null;
+
+    if (!state) {
+      return;
+    }
+
+    const hasSearchState =
+      state.historySearchQuery ||
+      state.historyMonthFilter != null ||
+      state.historyYearFilter != null;
+
+    if (!hasSearchState) {
+      return;
+    }
+
+    if (state.historyMonthFilter != null) {
+      setHistoryMonthFilter(state.historyMonthFilter);
+    }
+
+    if (state.historyYearFilter != null) {
+      setHistoryYearFilter(state.historyYearFilter);
+    }
+
+    if (state.historySearchQuery != null) {
+      setHistorySearchQuery(state.historySearchQuery);
+      setAppliedHistorySearchQuery(state.historySearchQuery.trim());
+    }
+
+    setHistoryPage(1);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setHistoryPage(1);
+      setAppliedHistorySearchQuery(historySearchQuery.trim());
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [historySearchQuery]);
 
   useEffect(() => {
     let isMounted = true;
@@ -359,7 +434,9 @@ export default function PaymentsPage() {
   const activeCashfreeSession =
     cashfreeRequest?.session ?? getSavedCashfreeSession(selectedPendingCashfreePayment);
   const cashfreeScanValue = getCashfreeScanValue(activeCashfreeSession);
+  const cashfreePublicPaymentUrl = cashfreeRequest?.public_payment_url ?? null;
   const cashfreeCheckoutUrl = activeCashfreeSession?.checkout_url ?? null;
+  const cashfreeShareValue = cashfreePublicPaymentUrl || cashfreeCheckoutUrl || cashfreeScanValue;
 
   const renewalPreview = useMemo(() => {
     if (!selectedStudent) {
@@ -430,6 +507,27 @@ export default function PaymentsPage() {
     );
   }, [pendingPayments, searchQuery]);
 
+  const historyYearOptions = useMemo(() => {
+    const startYear = 2020;
+    const totalYears = Math.max(1, currentYear - startYear + 1);
+
+    return Array.from({ length: totalYears }, (_, index) => currentYear - index);
+  }, [currentYear]);
+
+  const canExportMonthlyHistory =
+    historyMonthFilter !== 'all' && historyYearFilter !== 'all';
+
+  const selectedHistoryMonthLabel = useMemo(() => {
+    if (!canExportMonthlyHistory) {
+      return '';
+    }
+
+    return new Date(Number(historyYearFilter), Number(historyMonthFilter) - 1, 1).toLocaleString(
+      'en-IN',
+      { month: 'long' },
+    );
+  }, [canExportMonthlyHistory, historyMonthFilter, historyYearFilter]);
+
   const updatePaymentForm = <K extends keyof RecordPaymentRequest>(
     field: K,
     value: RecordPaymentRequest[K],
@@ -460,6 +558,28 @@ export default function PaymentsPage() {
     setCashfreeRequest(null);
     setPaymentError(null);
     setPaymentSuccess(null);
+  };
+
+  const handleDownloadMonthlyHistoryPdf = async () => {
+    if (!canExportMonthlyHistory) {
+      setHistoryExportError('Select one month and one year before downloading the PDF backup.');
+      return;
+    }
+
+    setHistoryExporting(true);
+    setHistoryExportError(null);
+
+    try {
+      await paymentsApi.downloadMonthlyHistoryPdf(
+        Number(historyYearFilter),
+        Number(historyMonthFilter),
+      );
+    } catch (err) {
+      console.error('Failed to download monthly payment history PDF.', err);
+      setHistoryExportError('Failed to download the monthly PDF backup.');
+    } finally {
+      setHistoryExporting(false);
+    }
   };
 
   const handleSubmitPayment = async () => {
@@ -568,15 +688,17 @@ export default function PaymentsPage() {
   };
 
   const handleCopyCashfreeScanValue = async () => {
-    if (!cashfreeScanValue) {
+    if (!cashfreeShareValue) {
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(cashfreeScanValue);
+      await navigator.clipboard.writeText(cashfreeShareValue);
       setPaymentError(null);
       setPaymentSuccess(
-        'Cashfree payment link copied. If scanning is inconvenient, the student can open the same link directly on their phone.',
+        cashfreePublicPaymentUrl
+          ? 'Secure payment page link copied. The student can open it directly on their phone.'
+          : 'Cashfree payment link copied. If scanning is inconvenient, the student can open the same link directly on their phone.',
       );
     } catch (error) {
       console.error('Failed to copy Cashfree payment link.', error);
@@ -1105,11 +1227,11 @@ export default function PaymentsPage() {
                                 type="button"
                                 variant="secondary"
                                 onClick={() => void handleCopyCashfreeScanValue()}
-                                disabled={!cashfreeScanValue}
+                                disabled={!cashfreeShareValue}
                                 className="sm:flex-1"
                               >
                                 <Copy className="h-4 w-4" />
-                                Copy Scan Link
+                                {cashfreePublicPaymentUrl ? 'Copy Secure Payment Link' : 'Copy Scan Link'}
                               </Button>
                               {cashfreeCheckoutUrl && (
                                 <a
@@ -1365,153 +1487,289 @@ export default function PaymentsPage() {
 
                 <Card noPadding>
                   <div className="border-b border-gray-100 p-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-gray-900">Recent Payments</h3>
+                        <h3 className="text-lg font-bold text-gray-900">Payment History</h3>
                         <p className="mt-1 text-sm text-gray-600">
-                          Pending and verified payments for your visible branches
+                          Old payments stay stored in the database. Filter by month and year to open last month or any earlier payment history, then download a monthly PDF backup when needed.
                         </p>
                       </div>
-                      <Badge variant="info">{recentPayments.length}</Badge>
+
+                      <div className="flex flex-col gap-3 xl:items-end">
+                        <div className="flex flex-wrap gap-2">
+                          <select
+                            value={historyMonthFilter}
+                            onChange={(event) => {
+                              setHistoryPage(1);
+                              setHistoryExportError(null);
+                              setHistoryMonthFilter(
+                                event.target.value === 'all'
+                                  ? 'all'
+                                  : Number(event.target.value),
+                              );
+                            }}
+                            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          >
+                            <option value="all">All months</option>
+                            {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                              <option key={month} value={month}>
+                                {new Date(2026, month - 1, 1).toLocaleString('en-IN', {
+                                  month: 'long',
+                                })}
+                              </option>
+                            ))}
+                          </select>
+
+                          <select
+                            value={historyYearFilter}
+                            onChange={(event) => {
+                              setHistoryPage(1);
+                              setHistoryExportError(null);
+                              setHistoryYearFilter(
+                                event.target.value === 'all'
+                                  ? 'all'
+                                  : Number(event.target.value),
+                              );
+                            }}
+                            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          >
+                            <option value="all">All years</option>
+                            {historyYearOptions.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="relative w-full min-w-[14rem] xl:w-72">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Search student, receipt, branch..."
+                              value={historySearchQuery}
+                              onChange={(event) => {
+                                setHistoryExportError(null);
+                                setHistorySearchQuery(event.target.value);
+                              }}
+                              className="w-full rounded-xl border border-gray-200 py-3 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Badge variant="info">{historyTotalPayments}</Badge>
+                            <span className="text-xs font-medium text-gray-500">
+                              Page {historyPage} of {historyTotalPages}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                          <p className="text-xs text-gray-500">
+                            {canExportMonthlyHistory
+                              ? `Download ${selectedHistoryMonthLabel} ${historyYearFilter} as a PDF backup.`
+                              : 'Select one month and one year to download a monthly PDF backup.'}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            isLoading={historyExporting}
+                            disabled={!canExportMonthlyHistory}
+                            onClick={() => void handleDownloadMonthlyHistoryPdf()}
+                          >
+                            {!historyExporting && <Download className="h-4 w-4" />}
+                            Download PDF
+                          </Button>
+                        </div>
+
+                        {historyExportError && (
+                          <p className="text-sm font-medium text-red-600">{historyExportError}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {recentPayments.length === 0 ? (
                     <div className="p-10 text-center">
                       <Receipt className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-                      <p className="font-semibold text-gray-900">No payments submitted yet</p>
+                      <p className="font-semibold text-gray-900">
+                        {appliedHistorySearchQuery
+                          ? 'No payment matched your history search'
+                          : 'No payments found for the selected history window'}
+                      </p>
                       <p className="mt-1 text-sm text-gray-600">
-                        Submitted and verified payments will appear here.
+                        {appliedHistorySearchQuery
+                          ? 'Try another student name, receipt number, transaction ID, or branch.'
+                          : 'Try another month or year to open an older payment history.'}
                       </p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="border-b border-gray-200 bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Student
-                            </th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Coverage
-                            </th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Amount
-                            </th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Paid On
-                            </th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Receipt
-                            </th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Status
-                            </th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                              Actions
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {recentPayments.map((payment, index) => (
-                            <motion.tr
-                              key={payment.id}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: index * 0.04 }}
-                              className="transition-colors hover:bg-gray-50"
-                            >
-                              <td className="px-6 py-4">
-                                <div>
-                                  <p className="font-semibold text-gray-900">
-                                    {payment.student_name || 'Unknown Student'}
-                                  </p>
-                                  <p className="text-sm text-gray-500">
-                                    {payment.student_code || `Student #${payment.student_id}`}
-                                  </p>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900">
-                                {formatDateRange(
-                                  payment.coverage_start_date,
-                                  payment.coverage_end_date,
-                                )}
-                              </td>
-                              <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                                {formatCurrency(payment.amount)}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-600">
-                                {formatDate(payment.payment_date)}
-                              </td>
-                              <td className="px-6 py-4 text-sm font-medium text-purple-700">
-                                {payment.receipt_number}
-                              </td>
-                              <td className="px-6 py-4">
-                                <Badge variant={getPaymentStatusVariant(payment.status)}>
-                                  {getPaymentStatusLabel(payment.status)}
-                                </Badge>
-                              </td>
-                              <td className="px-6 py-4">
-                                {payment.status === 'pending' ? (
-                                  isSuperAdmin ? (
-                                    <div className="space-y-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleConfirmPayment(payment)}
-                                        disabled={paymentActionKey === `confirm-${payment.id}`}
-                                        className={`font-medium transition-colors ${
-                                          paymentActionKey === `confirm-${payment.id}`
-                                            ? 'cursor-not-allowed text-gray-400'
-                                            : 'text-amber-700 hover:text-amber-800'
-                                        }`}
-                                      >
-                                        {paymentActionKey === `confirm-${payment.id}`
-                                          ? 'Confirming...'
-                                          : 'Confirm Payment'}
-                                      </button>
-                                      {payment.transaction_id?.startsWith('CFPAY-') && (
+                    <div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="border-b border-gray-200 bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                Student
+                              </th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                Coverage
+                              </th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                Amount
+                              </th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                Paid On
+                              </th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                Receipt
+                              </th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                Status
+                              </th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                Actions
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {recentPayments.map((payment, index) => (
+                              <motion.tr
+                                key={payment.id}
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: index * 0.04 }}
+                                className="transition-colors hover:bg-gray-50"
+                              >
+                                <td className="px-6 py-4">
+                                  <div>
+                                    <p className="font-semibold text-gray-900">
+                                      {payment.student_name || 'Unknown Student'}
+                                    </p>
+                                    <p className="text-sm text-gray-500">
+                                      {payment.student_code || `Student #${payment.student_id}`}
+                                    </p>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900">
+                                  {formatDateRange(
+                                    payment.coverage_start_date,
+                                    payment.coverage_end_date,
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                                  {formatCurrency(payment.amount)}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-600">
+                                  {formatDate(payment.payment_date)}
+                                </td>
+                                <td className="px-6 py-4 text-sm font-medium text-purple-700">
+                                  {payment.receipt_number}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <Badge variant={getPaymentStatusVariant(payment.status)}>
+                                    {getPaymentStatusLabel(payment.status)}
+                                  </Badge>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {payment.status === 'pending' ? (
+                                    isSuperAdmin ? (
+                                      <div className="space-y-2">
                                         <button
                                           type="button"
-                                          onClick={() => void handleSimulateCashfreeSuccess(payment)}
-                                          disabled={paymentActionKey === `cashfree-${payment.id}`}
-                                          className={`block font-medium transition-colors ${
-                                            paymentActionKey === `cashfree-${payment.id}`
+                                          onClick={() => void handleConfirmPayment(payment)}
+                                          disabled={paymentActionKey === `confirm-${payment.id}`}
+                                          className={`font-medium transition-colors ${
+                                            paymentActionKey === `confirm-${payment.id}`
                                               ? 'cursor-not-allowed text-gray-400'
-                                              : 'text-sky-700 hover:text-sky-800'
+                                              : 'text-amber-700 hover:text-amber-800'
                                           }`}
                                         >
-                                          {paymentActionKey === `cashfree-${payment.id}`
-                                            ? 'Simulating...'
-                                            : 'Simulate Cashfree'}
+                                          {paymentActionKey === `confirm-${payment.id}`
+                                            ? 'Confirming...'
+                                            : 'Confirm Payment'}
                                         </button>
-                                      )}
-                                    </div>
+                                        {payment.transaction_id?.startsWith('CFPAY-') && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void handleSimulateCashfreeSuccess(payment)
+                                            }
+                                            disabled={paymentActionKey === `cashfree-${payment.id}`}
+                                            className={`block font-medium transition-colors ${
+                                              paymentActionKey === `cashfree-${payment.id}`
+                                                ? 'cursor-not-allowed text-gray-400'
+                                                : 'text-sky-700 hover:text-sky-800'
+                                            }`}
+                                          >
+                                            {paymentActionKey === `cashfree-${payment.id}`
+                                              ? 'Simulating...'
+                                              : 'Simulate Cashfree'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm text-gray-500">
+                                        Awaiting superadmin verification
+                                      </span>
+                                    )
                                   ) : (
-                                    <span className="text-sm text-gray-500">
-                                      Awaiting superadmin verification
-                                    </span>
-                                  )
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleSendReceipt(payment)}
-                                    disabled={communicationActionKey === `receipt-${payment.id}`}
-                                    className={`font-medium transition-colors ${
-                                      communicationActionKey === `receipt-${payment.id}`
-                                        ? 'cursor-not-allowed text-gray-400'
-                                        : 'text-sky-600 hover:text-sky-700'
-                                    }`}
-                                  >
-                                    {communicationActionKey === `receipt-${payment.id}`
-                                      ? 'Sending...'
-                                      : 'Resend Receipt'}
-                                  </button>
-                                )}
-                              </td>
-                            </motion.tr>
-                          ))}
-                        </tbody>
-                      </table>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleSendReceipt(payment)}
+                                      disabled={communicationActionKey === `receipt-${payment.id}`}
+                                      className={`font-medium transition-colors ${
+                                        communicationActionKey === `receipt-${payment.id}`
+                                          ? 'cursor-not-allowed text-gray-400'
+                                          : 'text-sky-600 hover:text-sky-700'
+                                      }`}
+                                    >
+                                      {communicationActionKey === `receipt-${payment.id}`
+                                        ? 'Sending...'
+                                        : 'Resend Receipt'}
+                                    </button>
+                                  )}
+                                </td>
+                              </motion.tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-gray-600">
+                          Showing {(historyPage - 1) * historyPageSize + 1}-
+                          {Math.min(historyPage * historyPageSize, historyTotalPayments)} of{' '}
+                          {historyTotalPayments} payments
+                        </p>
+
+                        <div className="flex items-center gap-3">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={historyPage <= 1}
+                            onClick={() => setHistoryPage((previous) => Math.max(previous - 1, 1))}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={historyPage >= historyTotalPages}
+                            onClick={() =>
+                              setHistoryPage((previous) =>
+                                Math.min(previous + 1, historyTotalPages),
+                              )
+                            }
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </Card>

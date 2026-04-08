@@ -46,12 +46,26 @@ function parseIncludeInactive(value: unknown): boolean | undefined {
   return undefined;
 }
 
+function parseLimit(value: unknown): number | undefined {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isNaN(parsedValue) ? Number.NaN : parsedValue;
+}
+
 // GET /api/students - Get all students
 export async function getStudents(req: AuthRequest, res: Response) {
   try {
     const user = requireAuthenticatedUser(req.user);
     const requestedBranchId = parseBranchId(req.query.branch_id);
     const includeInactive = parseIncludeInactive(req.query.include_inactive);
+    const search =
+      typeof req.query.search === 'string' && req.query.search.trim() !== ''
+        ? req.query.search.trim()
+        : undefined;
+    const limit = parseLimit(req.query.limit);
 
     // Only validate if branch_id was actually provided in query
     if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
@@ -65,10 +79,16 @@ export async function getStudents(req: AuthRequest, res: Response) {
       return badRequest(res, 'Invalid include_inactive value');
     }
 
+    if (limit !== undefined && (Number.isNaN(limit) || limit < 1 || limit > 50)) {
+      return badRequest(res, 'Invalid limit. Must be between 1 and 50');
+    }
+
     const branchId = resolveAuthorizedBranchId(user, requestedBranchId);
     const students = await studentService.getAllStudents(
       branchId,
       includeInactive ?? false,
+      search,
+      limit,
     );
 
     res.status(200).json({

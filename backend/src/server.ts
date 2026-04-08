@@ -1,12 +1,10 @@
-import dotenv from 'dotenv';
+import './config/load-env.ts';
 import app from './app.ts';
 import pool from './config/db.ts';
 import type { Server as HttpServer } from 'http';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import 'dotenv/config';
-
-// dotenv.config(); // already handled by dotenv/config
+import { findUserById, verifyToken } from './modules/auth/auth.service.ts';
 
 const PORT: number = parseInt(process.env.PORT || '5000', 10);
 
@@ -42,14 +40,70 @@ async function startServer(): Promise<void> {
     // 🔥 Setup Socket.IO
     io = new SocketIOServer(server, {
       cors: {
-        origin: '*',
+        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        credentials: true,
       },
+    });
+
+    io.use(async (socket, next) => {
+      try {
+        const handshakeToken =
+          typeof socket.handshake.auth?.token === 'string'
+            ? socket.handshake.auth.token
+            : typeof socket.handshake.headers.authorization === 'string'
+              ? socket.handshake.headers.authorization
+              : '';
+        const normalizedToken = handshakeToken.toLowerCase().startsWith('bearer ')
+          ? handshakeToken.slice(7).trim()
+          : handshakeToken.trim();
+        const decoded = verifyToken(normalizedToken);
+
+        if (!decoded) {
+          next(new Error('Authentication required'));
+          return;
+        }
+
+        const user = await findUserById(decoded.userId);
+
+        if (!user || !user.is_active || user.token_version !== decoded.token_version) {
+          next(new Error('Session has expired'));
+          return;
+        }
+
+        socket.data.user = {
+          id: user.id,
+          role: user.role,
+          branch_id: user.branch_id,
+        };
+        next();
+      } catch (error) {
+        next(error instanceof Error ? error : new Error('Socket authentication failed'));
+      }
     });
 
     // 🔥 Make io globally accessible
     (global as any).io = io;
 
     io.on('connection', (socket) => {
+      const user = socket.data.user as
+        | { id: number; role: 'superadmin' | 'admin'; branch_id: number | null }
+        | undefined;
+
+      if (!user) {
+        socket.disconnect(true);
+        return;
+      }
+
+      socket.join(`user:${user.id}`);
+
+      if (user.role === 'superadmin') {
+        socket.join('role:superadmin');
+      }
+
+      if (user.branch_id != null) {
+        socket.join(`branch:${user.branch_id}`);
+      }
+
       console.log('🔌 Client connected:', socket.id);
 
       socket.on('disconnect', () => {

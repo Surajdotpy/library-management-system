@@ -45,10 +45,17 @@ export async function login(req: Request, res: Response) {
 }
 
 // POST /api/auth/logout - Admin logout
-export async function logout(req: Request, res: Response) {
+export async function logout(req: AuthRequest, res: Response) {
   try {
-    // In JWT authentication, logout is handled on client side
-    // Server doesn't need to do anything (stateless)
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Not authenticated'
+      });
+    }
+
+    await authService.invalidateUserSessions(req.user.userId);
+
     res.status(200).json({
       success: true,
       message: 'Logout successful'
@@ -74,7 +81,7 @@ export async function getCurrentUser(req: AuthRequest, res: Response) {
     }
     
     // Fetch full user details from database
-    const user = await authService.findUserByEmail(req.user.email);
+    const user = await authService.findUserById(req.user.userId);
     
     if (!user) {
       return res.status(404).json({

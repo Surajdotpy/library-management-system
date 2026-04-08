@@ -33,6 +33,11 @@ interface CashfreeWebhookPayload {
 }
 
 const MOCK_CASHFREE_WEBHOOK_SECRET = 'cashfree_mock_webhook_secret';
+const CASHFREE_WEBHOOK_MAX_AGE_SECONDS = Number.parseInt(
+  process.env.CASHFREE_WEBHOOK_MAX_AGE_SECONDS || '300',
+  10,
+);
+const processedCashfreeWebhooks = new Map<string, number>();
 
 function parseJsonRecord(responseText: string): Record<string, unknown> | null {
   try {
@@ -98,7 +103,6 @@ function extractUpiIntent(payload: Record<string, unknown> | null): string | nul
 
 function getMode(): PaymentGatewayMode {
   const configuredMode = env.cashfreeMode;
-  console.log("CASHFREE_MODE from env:", env.cashfreeMode);
 
   if (
     configuredMode === 'mock' ||
@@ -123,6 +127,63 @@ function getWebhookSigningSecret(): string {
     env.cashfreeSecretKey ||
     (getMode() === 'mock' ? MOCK_CASHFREE_WEBHOOK_SECRET : '')
   );
+}
+
+function getCashfreeWebhookFingerprint(
+  timestamp: string | null | undefined,
+  signature: string | null | undefined,
+): string | null {
+  if (!timestamp || !signature) {
+    return null;
+  }
+
+  return `${timestamp}:${signature}`;
+}
+
+function cleanupProcessedCashfreeWebhooks(nowMs: number): void {
+  for (const [fingerprint, expiresAt] of processedCashfreeWebhooks.entries()) {
+    if (expiresAt <= nowMs) {
+      processedCashfreeWebhooks.delete(fingerprint);
+    }
+  }
+}
+
+function parseWebhookTimestampMs(timestamp: string | null | undefined): number | null {
+  if (!timestamp) {
+    return null;
+  }
+
+  const normalizedTimestamp = timestamp.trim();
+
+  if (!normalizedTimestamp) {
+    return null;
+  }
+
+  if (/^\d+$/.test(normalizedTimestamp)) {
+    const numericTimestamp = Number.parseInt(normalizedTimestamp, 10);
+
+    if (!Number.isFinite(numericTimestamp)) {
+      return null;
+    }
+
+    return normalizedTimestamp.length <= 10 ? numericTimestamp * 1000 : numericTimestamp;
+  }
+
+  const parsedTimestamp = Date.parse(normalizedTimestamp);
+  return Number.isNaN(parsedTimestamp) ? null : parsedTimestamp;
+}
+
+function isWebhookTimestampFresh(timestamp: string | null | undefined): boolean {
+  const parsedTimestampMs = parseWebhookTimestampMs(timestamp);
+
+  if (parsedTimestampMs == null) {
+    return false;
+  }
+
+  const nowMs = Date.now();
+  const maxAgeMs = Math.max(60, CASHFREE_WEBHOOK_MAX_AGE_SECONDS) * 1000;
+
+  return Math.abs(nowMs - parsedTimestampMs) <= maxAgeMs;
 }
 
 function buildMockCashfreeSession(input: CreateCashfreeOrderInput): CashfreePaymentSession {
@@ -292,6 +353,64 @@ export function verifyCashfreeWebhookSignature(
   }
 
   return timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+export function validateCashfreeWebhookRequest(
+  rawPayload: string,
+  timestamp: string | null | undefined,
+  signature: string | null | undefined,
+): { isValid: boolean; isDuplicate: boolean; error: string | null } {
+  if (!verifyCashfreeWebhookSignature(rawPayload, timestamp, signature)) {
+    return {
+      isValid: false,
+      isDuplicate: false,
+      error: 'Invalid Cashfree webhook signature',
+    };
+  }
+
+  if (!isWebhookTimestampFresh(timestamp)) {
+    return {
+      isValid: false,
+      isDuplicate: false,
+      error: 'Cashfree webhook timestamp is invalid or too old',
+    };
+  }
+
+  const fingerprint = getCashfreeWebhookFingerprint(timestamp, signature);
+  const nowMs = Date.now();
+
+  cleanupProcessedCashfreeWebhooks(nowMs);
+
+  if (fingerprint && processedCashfreeWebhooks.has(fingerprint)) {
+    return {
+      isValid: true,
+      isDuplicate: true,
+      error: null,
+    };
+  }
+
+  return {
+    isValid: true,
+    isDuplicate: false,
+    error: null,
+  };
+}
+
+export function rememberProcessedCashfreeWebhook(
+  timestamp: string | null | undefined,
+  signature: string | null | undefined,
+): void {
+  const fingerprint = getCashfreeWebhookFingerprint(timestamp, signature);
+
+  if (!fingerprint) {
+    return;
+  }
+
+  const nowMs = Date.now();
+  const maxAgeMs = Math.max(60, CASHFREE_WEBHOOK_MAX_AGE_SECONDS) * 1000;
+
+  cleanupProcessedCashfreeWebhooks(nowMs);
+  processedCashfreeWebhooks.set(fingerprint, nowMs + maxAgeMs);
 }
 
 export function buildMockCashfreeWebhookPayload(input: {

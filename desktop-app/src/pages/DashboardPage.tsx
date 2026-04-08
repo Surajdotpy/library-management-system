@@ -15,8 +15,6 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Badge, Card } from '@/components/ui';
 import { getStoredUser } from '@/lib/auth/session';
 import { useDashboardSummary } from '@/lib/hooks/useDashboardSummary';
-import { io } from "socket.io-client";
-import { useEffect, useState } from "react";
 
 
 function formatCurrency(amount: number): string {
@@ -59,14 +57,36 @@ function notificationBadgeStyles(severity: 'critical' | 'warning' | 'info'): str
   return 'bg-blue-100 text-blue-700';
 }
 
+function paymentStatusVariant(
+  status: 'paid' | 'pending' | 'failed' | 'refunded',
+): 'success' | 'warning' | 'danger' | 'default' {
+  if (status === 'paid') {
+    return 'success';
+  }
+
+  if (status === 'pending') {
+    return 'warning';
+  }
+
+  if (status === 'failed') {
+    return 'danger';
+  }
+
+  return 'default';
+}
+
+function paymentStatusLabel(status: 'paid' | 'pending' | 'failed' | 'refunded'): string {
+  if (status === 'pending') {
+    return 'Pending Verification';
+  }
+
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 
 
 export default function DashboardPage() {
-  const [notifications, setNotifications] = useState<any[]>([]);
-  
-  useEffect(() => {
-  const socket = io("http://localhost:5000");
-
+  /*
   socket.on("connect", () => {
     console.log("✅ Connected to socket:", socket.id);
   });
@@ -88,6 +108,7 @@ export default function DashboardPage() {
     socket.disconnect();
   };
 }, []);
+  */
 
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
@@ -103,6 +124,7 @@ export default function DashboardPage() {
   return (
 
     <MainLayout>
+      {/*
       <div style={{ marginBottom: "20px" }}>
   <h2>🔔 Notifications</h2>
 
@@ -122,6 +144,7 @@ export default function DashboardPage() {
     </div>
   ))}
 </div>
+      */}
       <div className="space-y-6">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -262,7 +285,7 @@ export default function DashboardPage() {
                     <div>
                       <h3 className="text-lg font-bold text-gray-900">Recent Payments</h3>
                       <p className="mt-1 text-sm text-gray-600">
-                        Latest recorded collections across visible data
+                        Latest 12 payment submissions and verifications from the last 3 months
                       </p>
                     </div>
                     <Badge variant="info">{summary.recent_payments.length}</Badge>
@@ -287,7 +310,12 @@ export default function DashboardPage() {
                           </div>
 
                           <div className="flex-1">
-                            <p className="font-semibold text-gray-900">{payment.student_name}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-gray-900">{payment.student_name}</p>
+                              <Badge variant={paymentStatusVariant(payment.status)} size="sm">
+                                {paymentStatusLabel(payment.status)}
+                              </Badge>
+                            </div>
                             <p className="text-sm text-gray-600">
                               {payment.student_code} | Receipt {payment.receipt_number}
                             </p>
@@ -301,7 +329,8 @@ export default function DashboardPage() {
                               {formatCurrency(payment.amount)}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {formatDateTime(payment.payment_date)}
+                              {payment.status === 'pending' ? 'Submitted' : 'Verified'}{' '}
+                              {formatDateTime(payment.activity_at)}
                             </p>
                           </div>
                         </div>

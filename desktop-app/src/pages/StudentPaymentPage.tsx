@@ -1,103 +1,118 @@
-import { useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import type { PublicPaymentDetails } from '@/types';
 
 export default function StudentPaymentPage() {
-  const { paymentId } = useParams();
-
-  const [payment, setPayment] = useState<any>(null);
+  const { accessToken } = useParams();
+  const [payment, setPayment] = useState<PublicPaymentDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch payment once
+  const encodedAccessToken = accessToken ? encodeURIComponent(accessToken) : null;
+
   useEffect(() => {
     async function fetchPayment() {
       try {
-        const res = await fetch(`/api/payments/${paymentId}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        });
+        const res = await fetch(`/api/payments/public/${encodedAccessToken}`);
+        const data = await res.json();
 
-        const data: any = await res.json();
-        setPayment(data.data);
-      } catch (error) {
-        console.error("Error fetching payment:", error);
+        if (!res.ok) {
+          setPayment(null);
+          setError(data?.error || 'Payment link is invalid or expired');
+          return;
+        }
+
+        setPayment(data.data ?? null);
+        setError(null);
+      } catch (fetchError) {
+        console.error('Error fetching payment:', fetchError);
+        setPayment(null);
+        setError('Unable to load payment details right now');
       } finally {
         setLoading(false);
       }
     }
 
-    if (paymentId) {
-      fetchPayment();
+    if (encodedAccessToken) {
+      void fetchPayment();
+      return;
     }
-  }, [paymentId]);
 
-  // Auto refresh every 5 seconds
+    setLoading(false);
+    setError('Payment link is invalid or expired');
+  }, [encodedAccessToken]);
+
   useEffect(() => {
-    const interval = setInterval(async () => {
-      if (!paymentId) return;
+    if (!encodedAccessToken) {
+      return undefined;
+    }
 
+    const interval = window.setInterval(async () => {
       try {
-        const res = await fetch(`/api/payments/${paymentId}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        });
+        const res = await fetch(`/api/payments/public/${encodedAccessToken}`);
+        const data = await res.json();
 
-        const data: any = await res.json();
-        setPayment(data.data);
-      } catch (error) {
-        console.error("Auto refresh error:", error);
+        if (!res.ok) {
+          setPayment(null);
+          setError(data?.error || 'Payment link is invalid or expired');
+          return;
+        }
+
+        setPayment(data.data ?? null);
+        setError(null);
+      } catch (fetchError) {
+        console.error('Auto refresh error:', fetchError);
       }
     }, 5000);
 
-    return () => clearInterval(interval);
-  }, [paymentId]);
+    return () => window.clearInterval(interval);
+  }, [encodedAccessToken]);
 
-  // Loading state
   if (loading) {
-    return <div className="text-center mt-20">Loading...</div>;
+    return <div className="mt-20 text-center">Loading...</div>;
   }
 
-  // Not found
   if (!payment) {
+    return <div className="mt-20 text-center text-red-500">{error || 'Payment not found'}</div>;
+  }
+
+  if (payment.status === 'paid') {
     return (
-      <div className="text-center mt-20 text-red-500">
-        Payment not found
+      <div className="mt-20 text-center text-green-600">
+        <h1 className="text-2xl font-bold">Payment Successful</h1>
+        <p>Rs {payment.amount} received</p>
       </div>
     );
   }
 
-  // Success screen
-  if (payment.status === "paid") {
-    return (
-      <div className="text-center mt-20 text-green-600">
-        <h1 className="text-2xl font-bold">Payment Successful ✅</h1>
-        <p>₹{payment.amount} received</p>
-      </div>
-    );
-  }
-
-  // Payment screen
   return (
-    <div className="text-center mt-20">
-      <h1 className="text-2xl font-bold">Pay ₹{payment.amount}</h1>
-
-      <p className="mb-4">
-        {payment.student_name || "Student"}
-      </p>
+    <div className="mt-20 text-center">
+      <h1 className="text-2xl font-bold">Pay Rs {payment.amount}</h1>
+      <p className="mb-2">{payment.student_name || 'Student'}</p>
+      <p className="mb-4 text-sm text-gray-500">{payment.branch_name}</p>
 
       {payment.gateway_upi_intent && (
         <div className="flex justify-center">
-          <QRCodeSVG
-            value={payment.gateway_upi_intent}
-            size={200}
-          />
+          <QRCodeSVG value={payment.gateway_upi_intent} size={200} />
         </div>
       )}
 
+      {!payment.gateway_upi_intent && payment.gateway_checkout_url && (
+        <p className="mt-4">
+          <a
+            href={payment.gateway_checkout_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-600 underline"
+          >
+            Open secure payment page
+          </a>
+        </p>
+      )}
+
       <p className="mt-4 text-gray-500">
-        Scan QR to pay
+        {payment.gateway_upi_intent ? 'Scan QR to pay' : 'Use the secure payment link to continue'}
       </p>
     </div>
   );

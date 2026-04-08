@@ -1,6 +1,13 @@
-import { AlertTriangle, Bell, Clock3, DollarSign, Info, Loader2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bell,
+  Download,
+  Info,
+  Loader2,
+  RefreshCcw,
+  RotateCw,
+} from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/lib/hooks/useNotifications';
 import type { NotificationItem } from '@/types';
 
@@ -8,12 +15,11 @@ function notificationIcon(notification: NotificationItem) {
   if (notification.severity === 'critical') {
     return <AlertTriangle className="h-4 w-4" />;
   }
-  if (notification.type === 'payment_received') {
-    return <DollarSign className="h-4 w-4" />;
+
+  if (notification.type === 'app_update') {
+    return <Download className="h-4 w-4" />;
   }
-  if ((notification.type as string).startsWith('attendance')) {
-    return <Clock3 className="h-4 w-4" />;
-  }
+
   return <Info className="h-4 w-4" />;
 }
 
@@ -21,9 +27,11 @@ function severityStyles(notification: NotificationItem) {
   if (notification.severity === 'critical') {
     return 'bg-red-100 text-red-700';
   }
+
   if (notification.severity === 'warning') {
     return 'bg-amber-100 text-amber-700';
   }
+
   return 'bg-blue-100 text-blue-700';
 }
 
@@ -37,28 +45,30 @@ function formatTime(dateString: string): string {
 }
 
 export interface NotificationDropdownProps {
-  /** Called when the dropdown should close. */
   onClose: () => void;
-  /** Whether to show branch names (e.g., for superadmin view). */
   showBranchName?: boolean;
 }
 
-/**
- * NotificationDropdown — the dropdown panel with notification list.
- * Uses useNotifications internally for state and actions.
- * Must be rendered as a sibling to the bell button (not inside it).
- */
-export function NotificationDropdown({ onClose, showBranchName = false }: NotificationDropdownProps) {
-  const navigate = useNavigate();
-  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead } =
-    useNotifications();
+export function NotificationDropdown({
+  onClose: _onClose,
+  showBranchName = false,
+}: NotificationDropdownProps) {
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    error,
+    markAsRead,
+    markAllAsRead,
+    isSupported,
+    updateState,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+  } = useNotifications();
 
   const handleNotificationClick = (notification: NotificationItem) => {
     markAsRead(notification);
-    if (notification.action_route) {
-      navigate(notification.action_route);
-    }
-    onClose();
   };
 
   return (
@@ -69,11 +79,12 @@ export function NotificationDropdown({ onClose, showBranchName = false }: Notifi
       transition={{ duration: 0.15 }}
       className="absolute right-0 z-50 mt-3 w-96 rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl"
     >
-      {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-gray-900">Notifications</p>
-          <p className="text-xs text-gray-500">Payment updates for your access scope</p>
+          <p className="text-sm font-semibold text-gray-900">App Updates</p>
+          <p className="text-xs text-gray-500">
+            The bell is reserved for new desktop app releases
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {!loading && unreadCount > 0 && (
@@ -93,32 +104,67 @@ export function NotificationDropdown({ onClose, showBranchName = false }: Notifi
         </div>
       </div>
 
-      {/* Loading state */}
+      <div className="mb-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => void checkForUpdates()}
+          className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-200"
+        >
+          <RefreshCcw className="h-3.5 w-3.5" />
+          Check now
+        </button>
+
+        {updateState.status === 'available' && (
+          <button
+            type="button"
+            onClick={() => void downloadUpdate()}
+            className="inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1.5 text-xs font-semibold text-purple-700 transition-colors hover:bg-purple-200"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download update
+          </button>
+        )}
+
+        {updateState.status === 'downloaded' && (
+          <button
+            type="button"
+            onClick={() => void installUpdate()}
+            className="inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700 transition-colors hover:bg-green-200"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            Restart to install
+          </button>
+        )}
+      </div>
+
       {loading && (
         <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
           <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
-          Loading notifications...
+          Loading update status...
         </div>
       )}
 
-      {/* Error state */}
+      {!loading && !isSupported && (
+        <div className="mb-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+          Update notifications are available only in the installed Electron desktop app.
+        </div>
+      )}
+
       {!loading && error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {/* Empty state */}
       {!loading && !error && notifications.length === 0 && (
         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-center text-sm text-gray-500">
           <Bell className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-          No payment notifications yet.
+          No app update notifications yet.
         </div>
       )}
 
-      {/* Notification list */}
       {!loading && !error && notifications.length > 0 && (
-        <div className="space-y-3">
+        <div className="max-h-[26rem] space-y-3 overflow-y-auto pr-1">
           {notifications.map((notification) => (
             <button
               key={notification.id}

@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from 'express';
-import { verifyToken } from '../modules/auth/auth.service.ts';
+import { findUserById, verifyToken } from '../modules/auth/auth.service.ts';
 import type { AuthRequest } from '../modules/auth/auth.types.ts';
 
 // Middleware to verify JWT token and authenticate user
@@ -44,8 +44,31 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
       });
     }
     
-    // Attach user data to request
-    req.user = decoded;
+    const user = await findUserById(decoded.userId);
+
+    if (!user || !user.is_active) {
+      return res.status(401).json({
+        success: false,
+        error: 'User account is inactive or no longer exists'
+      });
+    }
+
+    if (user.token_version !== decoded.token_version) {
+      return res.status(401).json({
+        success: false,
+        error: 'Session has expired. Please login again'
+      });
+    }
+
+    // Always attach the current database state so role and branch access
+    // changes take effect immediately.
+    req.user = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      branch_id: user.branch_id,
+      token_version: user.token_version,
+    };
     
     // Continue to next middleware/route handler
     next();

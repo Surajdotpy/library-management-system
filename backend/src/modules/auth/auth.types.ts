@@ -9,6 +9,7 @@ export interface User {
   role: 'superadmin' | 'admin';
   branch_id: number | null;
   is_active: boolean;
+  token_version: number;
   real_name: string;
   personal_phone?: string;
   employee_id?: string;
@@ -59,6 +60,7 @@ export interface JWTPayload {
   email: string;
   role: 'superadmin' | 'admin';
   branch_id: number | null;
+  token_version: number;
 }
 
 // Request with authenticated user (after middleware)

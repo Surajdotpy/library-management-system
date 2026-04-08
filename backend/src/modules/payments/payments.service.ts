@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import jwt from 'jsonwebtoken';
 import pool from '../../config/db.ts';
 import * as notificationsService from '../notifications/notifications.service.ts';
 import type {
@@ -10,12 +11,15 @@ import type {
   PaymentAlertSummary,
   PaymentCommunication,
   PaymentCommunicationQueryOptions,
+  PaymentHistoryPage,
+  PaymentHistoryQueryOptions,
   PaymentCommunicationRequestChannel,
   PaymentReminderBatchResult,
   PaymentReminderStage,
   PaymentVerificationSource,
   PaymentWithStudent,
   PendingPayment,
+  PublicPaymentDetails,
   RecordPaymentDTO,
   MonthlyRevenue,
   ReceiptData,
@@ -34,6 +38,50 @@ import {
 const PAYMENT_CYCLE_DAYS = 30;
 const PAYMENT_CYCLE_END_OFFSET = PAYMENT_CYCLE_DAYS - 1;
 const DUE_SOON_WINDOW_DAYS = 7;
+const PUBLIC_PAYMENT_LINK_EXPIRES_IN = process.env.PAYMENT_PUBLIC_LINK_EXPIRES_IN || '48h';
+const PAYMENT_HISTORY_SELECT_FIELDS = `
+  p.id,
+  p.payment_date,
+  p.coverage_start_date,
+  p.coverage_end_date,
+  p.amount,
+  p.fee_month,
+  p.fee_year,
+  p.payment_method,
+  p.transaction_id,
+  p.status,
+  p.gateway_provider,
+  p.gateway_mode,
+  p.gateway_session_id,
+  p.gateway_cf_order_id,
+  p.gateway_checkout_url,
+  p.gateway_upi_intent,
+  p.gateway_order_status,
+  p.gateway_expires_at,
+  p.collected_by,
+  p.receipt_number,
+  p.verification_source,
+  p.verification_reference,
+  p.verified_at,
+  p.verified_by,
+  p.notes,
+  p.created_at,
+  p.updated_at,
+  p.student_id,
+  s.name as student_name,
+  s.student_id as student_code,
+  s.email as student_email,
+  s.phone as student_phone,
+  s.branch_id,
+  b.name as branch_name
+`;
+const PDF_PAGE_WIDTH = 595;
+const PDF_PAGE_HEIGHT = 842;
+const PDF_HORIZONTAL_MARGIN = 40;
+const PDF_TITLE_Y = 805;
+const PDF_TEXT_START_Y = 782;
+const PDF_LINE_HEIGHT = 12;
+const PDF_TABLE_LINES_PER_PAGE = 40;
 
 interface StudentPaymentSnapshot {
   student_id: number;
@@ -82,6 +130,30 @@ interface LockedPaymentRecord extends Payment {
   branch_name: string;
 }
 
+interface PaymentHistoryReportSummary {
+  total_records: number;
+  total_amount: number;
+  paid_amount: number;
+  paid_count: number;
+  pending_count: number;
+  failed_count: number;
+  refunded_count: number;
+}
+
+interface MonthlyPaymentHistoryReport {
+  month: number;
+  year: number;
+  scope_label: string;
+  generated_at: Date;
+  payments: PaymentWithStudent[];
+  summary: PaymentHistoryReportSummary;
+}
+
+interface PublicPaymentAccessPayload extends jwt.JwtPayload {
+  scope: 'payment_public';
+  paymentId: number;
+}
+
 function parseDateOnly(value: string): Date {
   const [yearPart = '1970', monthPart = '1', dayPart = '1'] = value.split('-');
   const year = Number.parseInt(yearPart, 10);
@@ -106,6 +178,319 @@ function diffDays(from: Date, to: Date): number {
 
 function isValidDate(value: Date): boolean {
   return !Number.isNaN(value.getTime());
+}
+
+function getPublicPaymentLinkSecret(): string {
+  const configuredSecret =
+    process.env.PAYMENT_PUBLIC_LINK_SECRET?.trim() || process.env.JWT_SECRET?.trim();
+
+  if (!configuredSecret) {
+    throw new Error('PAYMENT_PUBLIC_LINK_SECRET or JWT_SECRET must be configured');
+  }
+
+  return configuredSecret;
+}
+
+function getPublicPaymentBaseUrl(): string {
+  return (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000')
+    .replace(/\/+$/, '');
+}
+
+function getPublicPaymentAccessExpiry(accessToken: string): Date | null {
+  const decoded = jwt.decode(accessToken) as jwt.JwtPayload | null;
+
+  if (typeof decoded?.exp !== 'number') {
+    return null;
+  }
+
+  return new Date(decoded.exp * 1000);
+}
+
+function generatePublicPaymentAccessToken(paymentId: number): string {
+  return jwt.sign(
+    {
+      scope: 'payment_public',
+      paymentId,
+    } satisfies PublicPaymentAccessPayload,
+    getPublicPaymentLinkSecret(),
+    {
+      expiresIn: PUBLIC_PAYMENT_LINK_EXPIRES_IN,
+    } as jwt.SignOptions,
+  );
+}
+
+function resolvePublicPaymentIdFromAccessToken(accessToken: string): number | null {
+  try {
+    const decoded = jwt.verify(
+      accessToken,
+      getPublicPaymentLinkSecret(),
+    ) as PublicPaymentAccessPayload;
+
+    if (decoded.scope !== 'payment_public' || !Number.isInteger(decoded.paymentId)) {
+      return null;
+    }
+
+    return decoded.paymentId;
+  } catch {
+    return null;
+  }
+}
+
+export function buildPublicPaymentUrl(accessToken: string): string {
+  return `${getPublicPaymentBaseUrl()}/pay/${encodeURIComponent(accessToken)}`;
+}
+
+function buildPaymentHistoryFromClause(
+  options: PaymentHistoryQueryOptions = {},
+): { fromClause: string; params: Array<number | string> } {
+  const params: Array<number | string> = [];
+  let fromClause = `
+    FROM fee_payments p
+    JOIN students s ON p.student_id = s.id
+    JOIN branches b ON s.branch_id = b.id
+    WHERE 1=1
+  `;
+
+  if (options.month) {
+    params.push(options.month);
+    fromClause += ` AND EXTRACT(MONTH FROM p.payment_date) = $${params.length}`;
+  }
+
+  if (options.year) {
+    params.push(options.year);
+    fromClause += ` AND EXTRACT(YEAR FROM p.payment_date) = $${params.length}`;
+  }
+
+  if (options.branchId != null) {
+    params.push(options.branchId);
+    fromClause += ` AND s.branch_id = $${params.length}`;
+  }
+
+  const normalizedSearch = options.search?.trim().toLowerCase();
+  if (normalizedSearch) {
+    params.push(`%${normalizedSearch}%`);
+    fromClause += `
+      AND (
+        LOWER(s.name) LIKE $${params.length}
+        OR LOWER(s.student_id) LIKE $${params.length}
+        OR LOWER(b.name) LIKE $${params.length}
+        OR LOWER(p.receipt_number) LIKE $${params.length}
+        OR LOWER(COALESCE(p.transaction_id, '')) LIKE $${params.length}
+      )
+    `;
+  }
+
+  return { fromClause, params };
+}
+
+function getMonthLabel(month: number): string {
+  return new Date(Date.UTC(2026, month - 1, 1)).toLocaleString('en-IN', {
+    month: 'long',
+  });
+}
+
+function formatCurrencyText(amount: number): string {
+  return `Rs ${amount.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatReportDateTime(value: Date | null): string {
+  if (!value) {
+    return '-';
+  }
+
+  return value.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function sanitizePdfText(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, '?')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapePdfText(value: string): string {
+  return sanitizePdfText(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+}
+
+function fitPdfColumn(value: string, width: number, align: 'left' | 'right' = 'left'): string {
+  const safeValue = sanitizePdfText(value);
+  const truncatedValue =
+    safeValue.length > width
+      ? `${safeValue.slice(0, Math.max(width - 1, 0))}.`
+      : safeValue;
+
+  if (align === 'right') {
+    return truncatedValue.padStart(width, ' ');
+  }
+
+  return truncatedValue.padEnd(width, ' ');
+}
+
+function buildPaymentReportLine(payment: PaymentWithStudent): string {
+  const activityLabel =
+    payment.status === 'pending'
+      ? formatReportDateTime(payment.created_at)
+      : formatReportDateTime(payment.verified_at ?? payment.payment_date);
+
+  return [
+    fitPdfColumn(formatDateOnly(payment.payment_date), 10),
+    fitPdfColumn(payment.student_name, 18),
+    fitPdfColumn(payment.branch_name ?? '-', 14),
+    fitPdfColumn(payment.receipt_number, 16),
+    fitPdfColumn(formatCurrencyText(payment.amount), 12, 'right'),
+    fitPdfColumn(payment.status.toUpperCase(), 10),
+    fitPdfColumn(activityLabel, 18),
+  ].join(' | ');
+}
+
+function buildPdfDocument(title: string, bodyPages: string[][]): Buffer {
+  const pageObjectNumbers: number[] = [];
+  const contentObjectNumbers: number[] = [];
+  let nextObjectNumber = 4;
+
+  for (let index = 0; index < bodyPages.length; index += 1) {
+    pageObjectNumbers.push(nextObjectNumber);
+    contentObjectNumbers.push(nextObjectNumber + 1);
+    nextObjectNumber += 2;
+  }
+
+  const objects: string[] = [];
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[2] = `<< /Type /Pages /Count ${bodyPages.length} /Kids [${pageObjectNumbers
+    .map((number) => `${number} 0 R`)
+    .join(' ')}] >>`;
+  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>';
+
+  bodyPages.forEach((lines, index) => {
+    const pageNumber = index + 1;
+    const totalPages = bodyPages.length;
+    const contentObjectNumber = contentObjectNumbers[index]!;
+    const pageObjectNumber = pageObjectNumbers[index]!;
+    const textLines = lines.map((line) => `(${escapePdfText(line)}) Tj`).join('\nT*\n');
+    const contentStream = [
+      'BT',
+      '/F1 13 Tf',
+      `${PDF_HORIZONTAL_MARGIN} ${PDF_TITLE_Y} Td`,
+      `(${escapePdfText(title)}) Tj`,
+      'ET',
+      'BT',
+      '/F1 9 Tf',
+      `${PDF_LINE_HEIGHT} TL`,
+      `${PDF_HORIZONTAL_MARGIN} ${PDF_TEXT_START_Y} Td`,
+      textLines,
+      'ET',
+      'BT',
+      '/F1 8 Tf',
+      `${PDF_PAGE_WIDTH - PDF_HORIZONTAL_MARGIN - 90} 24 Td`,
+      `(Page ${pageNumber} of ${totalPages}) Tj`,
+      'ET',
+    ].join('\n');
+
+    objects[pageObjectNumber] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}] ` +
+      `/Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectNumber} 0 R >>`;
+    objects[contentObjectNumber] =
+      `<< /Length ${Buffer.byteLength(contentStream, 'utf8')} >>\nstream\n${contentStream}\nendstream`;
+  });
+
+  const maxObjectNumber = nextObjectNumber - 1;
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+
+  for (let objectNumber = 1; objectNumber <= maxObjectNumber; objectNumber += 1) {
+    offsets[objectNumber] = Buffer.byteLength(pdf, 'utf8');
+    pdf += `${objectNumber} 0 obj\n${objects[objectNumber]}\nendobj\n`;
+  }
+
+  const xrefOffset = Buffer.byteLength(pdf, 'utf8');
+  pdf += `xref\n0 ${maxObjectNumber + 1}\n`;
+  pdf += '0000000000 65535 f \n';
+
+  for (let objectNumber = 1; objectNumber <= maxObjectNumber; objectNumber += 1) {
+    pdf += `${String(offsets[objectNumber]).padStart(10, '0')} 00000 n \n`;
+  }
+
+  pdf += `trailer\n<< /Size ${maxObjectNumber + 1} /Root 1 0 R >>\n`;
+  pdf += `startxref\n${xrefOffset}\n%%EOF`;
+
+  return Buffer.from(pdf, 'utf8');
+}
+
+async function getPaymentHistoryScopeLabel(branchId?: number): Promise<string> {
+  if (branchId == null) {
+    return 'All Branches';
+  }
+
+  const result = await pool.query<{ name: string }>(
+    `
+      SELECT name
+      FROM branches
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [branchId],
+  );
+
+  return result.rows[0]?.name ?? `Branch ${branchId}`;
+}
+
+function buildMonthlyPaymentHistoryPdf(report: MonthlyPaymentHistoryReport): Buffer {
+  const summaryLines = [
+    `Month: ${getMonthLabel(report.month)} ${report.year}`,
+    `Scope: ${report.scope_label}`,
+    `Generated: ${formatReportDateTime(report.generated_at)}`,
+    `Records: ${report.summary.total_records}`,
+    `Total Amount: ${formatCurrencyText(report.summary.total_amount)}`,
+    `Paid Amount: ${formatCurrencyText(report.summary.paid_amount)}`,
+    `Status Counts: paid=${report.summary.paid_count}, pending=${report.summary.pending_count}, failed=${report.summary.failed_count}, refunded=${report.summary.refunded_count}`,
+    '',
+    'Date       | Student            | Branch         | Receipt          |       Amount | Status     | Activity',
+    '----------------------------------------------------------------------------------------------------------',
+  ];
+
+  const rowLines =
+    report.payments.length === 0
+      ? ['No payment records were found for the selected month.']
+      : report.payments.map((payment) => buildPaymentReportLine(payment));
+
+  const pages: string[][] = [];
+
+  if (rowLines.length === 1 && report.payments.length === 0) {
+    pages.push([...summaryLines, ...rowLines]);
+  } else {
+    for (let index = 0; index < rowLines.length; index += PDF_TABLE_LINES_PER_PAGE) {
+      const chunk = rowLines.slice(index, index + PDF_TABLE_LINES_PER_PAGE);
+      pages.push(
+        index === 0
+          ? [...summaryLines, ...chunk]
+          : [
+              `Month: ${getMonthLabel(report.month)} ${report.year} | Scope: ${report.scope_label}`,
+              '',
+              'Date       | Student            | Branch         | Receipt          |       Amount | Status     | Activity',
+              '----------------------------------------------------------------------------------------------------------',
+              ...chunk,
+            ],
+      );
+    }
+  }
+
+  return buildPdfDocument(
+    `Coffee aur Kitaab Payment History Report`,
+    pages,
+  );
 }
 
 function normalizeConfirmedAt(value?: string): Date {
@@ -139,6 +524,51 @@ function calculateCoverageWindow(todayDate: Date, latestCoverageEnd: Date | null
     coverageStartDate,
     coverageEndDate,
   };
+}
+
+function emitPaymentActivity(input: {
+  paymentId: number;
+  studentId: number;
+  branchId: number;
+  status: 'pending' | 'paid' | 'failed' | 'refunded';
+}): void {
+  const ioServer = (
+    globalThis as typeof globalThis & {
+      io?: {
+        emit: (event: string, payload: Record<string, unknown>) => void;
+        to?: (room: string) => {
+          emit: (event: string, payload: Record<string, unknown>) => void;
+        };
+      };
+    }
+  ).io;
+
+  if (!ioServer) {
+    return;
+  }
+
+  const payload = {
+    paymentId: input.paymentId,
+    studentId: input.studentId,
+    branchId: input.branchId,
+    status: input.status,
+  };
+
+  if (typeof ioServer.to === 'function') {
+    ioServer.to('role:superadmin').emit('payment_activity', payload);
+    ioServer.to(`branch:${input.branchId}`).emit('payment_activity', payload);
+    return;
+  }
+
+  ioServer.emit('payment_activity', payload);
+}
+
+function shouldNotifyOnPaymentSubmission(data: RecordPaymentDTO): boolean {
+  return data.gateway_provider == null;
+}
+
+function shouldNotifyOnPaymentConfirmation(payment: LockedPaymentRecord): boolean {
+  return payment.gateway_provider != null;
 }
 
 async function getLatestPaidCoverage(
@@ -802,7 +1232,26 @@ export async function recordPayment(
       throw new Error('Payment record was not returned after creation');
     }
 
+    if (shouldNotifyOnPaymentSubmission(data)) {
+      await notificationsService.createPaymentSubmittedNotification(client, {
+        paymentId: createdPayment.id,
+        studentId: createdPayment.student_id,
+        studentName: studentRow.name,
+        branchId: studentRow.branch_id,
+        branchName: studentRow.branch_name,
+        amount: createdPayment.amount,
+        receiptNumber: createdPayment.receipt_number,
+      });
+    }
+
     await client.query('COMMIT');
+
+    emitPaymentActivity({
+      paymentId: createdPayment.id,
+      studentId: createdPayment.student_id,
+      branchId: studentRow.branch_id,
+      status: createdPayment.status,
+    });
 
     return createdPayment;
   } catch (error) {
@@ -877,10 +1326,13 @@ export async function createCashfreePaymentRequest(
       requestedBy,
       branchId,
     );
+    const publicAccessToken = generatePublicPaymentAccessToken(payment.id);
 
     return {
       payment,
       session,
+      public_payment_url: buildPublicPaymentUrl(publicAccessToken),
+      public_access_expires_at: getPublicPaymentAccessExpiry(publicAccessToken),
     };
   } catch (error) {
     if (transactionOpen) {
@@ -988,27 +1440,26 @@ async function confirmPendingPayment(input: {
       throw new Error('Payment record was not returned after confirmation');
     }
 
-    await notificationsService.createPaymentReceivedNotification(client, {
-      paymentId: confirmedPayment.id,
-      studentId: confirmedPayment.student_id,
-      studentName: paymentRecord.student_name,
-      branchId: paymentRecord.branch_id,
-      branchName: paymentRecord.branch_name,
-      amount: confirmedPayment.amount,
-      receiptNumber: confirmedPayment.receipt_number,
-    });
+    if (shouldNotifyOnPaymentConfirmation(paymentRecord)) {
+      await notificationsService.createPaymentReceivedNotification(client, {
+        paymentId: confirmedPayment.id,
+        studentId: confirmedPayment.student_id,
+        studentName: paymentRecord.student_name,
+        branchId: paymentRecord.branch_id,
+        branchName: paymentRecord.branch_name,
+        amount: confirmedPayment.amount,
+        receiptNumber: confirmedPayment.receipt_number,
+      });
+    }
 
     await client.query('COMMIT');
-   console.log("🔥 EMITTING SOCKET EVENT");
 
-const io = (global as any).io;
-
-if (io) {
-  io.emit("payment_received", {
-    message: `₹${confirmedPayment.amount} received`,
-    paymentId: confirmedPayment.id,
-  });
-}
+    emitPaymentActivity({
+      paymentId: confirmedPayment.id,
+      studentId: confirmedPayment.student_id,
+      branchId: paymentRecord.branch_id,
+      status: confirmedPayment.status,
+    });
 
     try {
       await sendPaymentReceipt(
@@ -1163,75 +1614,38 @@ export async function getStudentPaymentHistory(
 
 // Get all payments with student details
 export async function getAllPayments(
-  month?: number,
-  year?: number,
-  branchId?: number,
-  limit: number = 50,
-): Promise<PaymentWithStudent[]> {
-  let query = `
+  options: PaymentHistoryQueryOptions = {},
+): Promise<PaymentHistoryPage> {
+  const page = Math.max(options.page ?? 1, 1);
+  const limit = Math.min(Math.max(options.limit ?? 25, 1), 100);
+  const offset = (page - 1) * limit;
+  const { fromClause, params } = buildPaymentHistoryFromClause(options);
+
+  const countQuery = `
+    SELECT COUNT(*)::int AS total
+    ${fromClause}
+  `;
+  const countResult = await pool.query<{ total: number }>(countQuery, params);
+  const total = countResult.rows[0]?.total ?? 0;
+
+  const query = `
     SELECT
-      p.id,
-      p.payment_date,
-      p.coverage_start_date,
-      p.coverage_end_date,
-      p.amount,
-      p.fee_month,
-      p.fee_year,
-      p.payment_method,
-      p.transaction_id,
-      p.status,
-      p.gateway_provider,
-      p.gateway_mode,
-      p.gateway_session_id,
-      p.gateway_cf_order_id,
-      p.gateway_checkout_url,
-      p.gateway_upi_intent,
-      p.gateway_order_status,
-      p.gateway_expires_at,
-      p.collected_by,
-      p.receipt_number,
-      p.verification_source,
-      p.verification_reference,
-      p.verified_at,
-      p.verified_by,
-      p.notes,
-      p.created_at,
-      p.updated_at,
-      p.student_id,
-      s.name as student_name,
-      s.student_id as student_code,
-      s.email as student_email,
-      s.phone as student_phone,
-      s.branch_id,
-      b.name as branch_name
-    FROM fee_payments p
-    JOIN students s ON p.student_id = s.id
-    JOIN branches b ON s.branch_id = b.id
-    WHERE 1=1
+      ${PAYMENT_HISTORY_SELECT_FIELDS}
+    ${fromClause}
+    ORDER BY p.payment_date DESC, p.created_at DESC, p.id DESC
+    LIMIT $${params.length + 1}
+    OFFSET $${params.length + 2}
   `;
 
-  const params: number[] = [];
+  const result = await pool.query<PaymentWithStudent>(query, [...params, limit, offset]);
 
-  if (month) {
-    params.push(month);
-    query += ` AND EXTRACT(MONTH FROM p.payment_date) = $${params.length}`;
-  }
-
-  if (year) {
-    params.push(year);
-    query += ` AND EXTRACT(YEAR FROM p.payment_date) = $${params.length}`;
-  }
-
-  if (branchId != null) {
-    params.push(branchId);
-    query += ` AND s.branch_id = $${params.length}`;
-  }
-
-  query += ` ORDER BY p.payment_date DESC LIMIT $${params.length + 1}`;
-  params.push(limit);
-
-  const result = await pool.query<PaymentWithStudent>(query, params);
-  return result.rows;
+  return {
+    payments: result.rows,
+    total,
+    page,
+    limit,
+    totalPages: total === 0 ? 1 : Math.ceil(total / limit),
+  };
 }
 
 // Get pending payments
@@ -1551,6 +1965,76 @@ export async function sendPaymentReceipt(
   return communications;
 }
 
+export async function exportMonthlyPaymentHistoryPdf(
+  month: number,
+  year: number,
+  branchId?: number,
+): Promise<{ buffer: Buffer; filename: string }> {
+  const { fromClause, params } = buildPaymentHistoryFromClause({
+    month,
+    year,
+    ...(branchId != null ? { branchId } : {}),
+  });
+
+  const result = await pool.query<PaymentWithStudent>(
+    `
+      SELECT
+        ${PAYMENT_HISTORY_SELECT_FIELDS}
+      ${fromClause}
+      ORDER BY p.payment_date DESC, p.created_at DESC, p.id DESC
+    `,
+    params,
+  );
+
+  const payments = result.rows;
+  const scopeLabel = await getPaymentHistoryScopeLabel(branchId);
+  const summary = payments.reduce<PaymentHistoryReportSummary>(
+    (accumulator, payment) => {
+      accumulator.total_records += 1;
+      accumulator.total_amount += payment.amount;
+
+      if (payment.status === 'paid') {
+        accumulator.paid_count += 1;
+        accumulator.paid_amount += payment.amount;
+      } else if (payment.status === 'pending') {
+        accumulator.pending_count += 1;
+      } else if (payment.status === 'failed') {
+        accumulator.failed_count += 1;
+      } else if (payment.status === 'refunded') {
+        accumulator.refunded_count += 1;
+      }
+
+      return accumulator;
+    },
+    {
+      total_records: 0,
+      total_amount: 0,
+      paid_amount: 0,
+      paid_count: 0,
+      pending_count: 0,
+      failed_count: 0,
+      refunded_count: 0,
+    },
+  );
+
+  const report: MonthlyPaymentHistoryReport = {
+    month,
+    year,
+    scope_label: scopeLabel,
+    generated_at: new Date(),
+    payments,
+    summary,
+  };
+
+  const safeScope = scopeLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const filename = `payment-history-${year}-${String(month).padStart(2, '0')}-${safeScope || 'report'}.pdf`;
+
+  return {
+    buffer: buildMonthlyPaymentHistoryPdf(report),
+    filename,
+  };
+}
+
 // Get monthly revenue report
 export async function getMonthlyRevenue(
   month: number,
@@ -1677,11 +2161,36 @@ export async function getPaymentByReceiptNumber(
   return result.rows[0] ?? null;
 }
 
-export async function getPaymentById(paymentId: number) {
-  const result = await pool.query(
-    'SELECT * FROM fee_payments WHERE id = $1',
-    [paymentId]
+export async function getPublicPaymentByAccessToken(
+  accessToken: string,
+): Promise<PublicPaymentDetails | null> {
+  const paymentId = resolvePublicPaymentIdFromAccessToken(accessToken);
+
+  if (paymentId == null) {
+    return null;
+  }
+
+  const result = await pool.query<PublicPaymentDetails>(
+    `
+      SELECT
+        p.id,
+        s.name AS student_name,
+        b.name AS branch_name,
+        p.amount,
+        p.status,
+        p.receipt_number,
+        p.gateway_upi_intent,
+        p.gateway_checkout_url,
+        p.gateway_expires_at
+      FROM fee_payments p
+      JOIN students s ON s.id = p.student_id
+      JOIN branches b ON b.id = s.branch_id
+      WHERE p.id = $1
+        AND p.status IN ('pending', 'paid')
+      LIMIT 1
+    `,
+    [paymentId],
   );
 
-  return result.rows[0];
+  return result.rows[0] ?? null;
 }

@@ -4,16 +4,16 @@ import {
   authenticateToken,
   requireSuperAdmin,
 } from '../../middleware/auth.middleware.ts';
+import {
+  publicPaymentRateLimiter,
+  webhookRateLimiter,
+} from '../../middleware/rate-limit.middleware.ts';
 
 const router = Router();
 
-// -------------------- PUBLIC (NO AUTH) --------------------
-// 👇 IMPORTANT: student payment page needs this
-router.get('/:paymentId', paymentController.getPaymentById);
-
 // -------------------- WEBHOOKS --------------------
-router.post('/cashfree/webhook', paymentController.handleCashfreeWebhook);
-router.post('/webhooks/confirm', paymentController.confirmPaymentWebhook);
+router.post('/cashfree/webhook', webhookRateLimiter, paymentController.handleCashfreeWebhook);
+router.post('/webhooks/confirm', webhookRateLimiter, paymentController.confirmPaymentWebhook);
 
 // -------------------- CASHFREE --------------------
 router.post(
@@ -48,9 +48,15 @@ router.post('/receipt/:paymentId/send', authenticateToken, paymentController.sen
 router.get('/receipt/:receiptNumber', authenticateToken, paymentController.getPaymentByReceipt);
 
 // -------------------- OTHER --------------------
+router.get('/public/:accessToken', publicPaymentRateLimiter, paymentController.getPublicPaymentByAccessToken);
 router.get('/student/:studentId', authenticateToken, paymentController.getStudentPayments);
 router.get('/communications', authenticateToken, paymentController.getPaymentCommunications);
 router.get('/pending', authenticateToken, paymentController.getPendingPayments);
+router.get(
+  '/export/monthly-pdf/:year/:month',
+  authenticateToken,
+  paymentController.downloadMonthlyPaymentHistoryPdf,
+);
 router.get('/revenue/:month/:year', authenticateToken, paymentController.getMonthlyRevenue);
 router.get('/', authenticateToken, paymentController.getAllPayments);
 

@@ -1,13 +1,190 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const fs = require('fs');
 const path = require('path');
 const isDev = require('electron-is-dev');
 
 let mainWindow;
+let updateCheckInterval = null;
+const AUTH_SESSION_FILENAME = 'auth-session.json';
 
-// Auto-updater configuration
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
+
+function getAuthSessionFilePath() {
+  return path.join(app.getPath('userData'), AUTH_SESSION_FILENAME);
+}
+
+function readStoredAuthSession() {
+  try {
+    const filePath = getAuthSessionFilePath();
+
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const storedValue = fs.readFileSync(filePath, 'utf8');
+
+    if (!storedValue) {
+      return null;
+    }
+
+    if (safeStorage.isEncryptionAvailable()) {
+      const decrypted = safeStorage.decryptString(Buffer.from(storedValue, 'base64'));
+      return JSON.parse(decrypted);
+    }
+
+    return JSON.parse(storedValue);
+  } catch (error) {
+    console.error('Failed to read stored auth session:', error);
+    return null;
+  }
+}
+
+function writeStoredAuthSession(nextSession) {
+  try {
+    const filePath = getAuthSessionFilePath();
+    const serialized = JSON.stringify(nextSession);
+
+    if (safeStorage.isEncryptionAvailable()) {
+      const encrypted = safeStorage.encryptString(serialized);
+      fs.writeFileSync(filePath, encrypted.toString('base64'), 'utf8');
+      return nextSession;
+    }
+
+    fs.writeFileSync(filePath, serialized, 'utf8');
+    return nextSession;
+  } catch (error) {
+    console.error('Failed to persist auth session:', error);
+    return null;
+  }
+}
+
+function clearStoredAuthSession() {
+  try {
+    const filePath = getAuthSessionFilePath();
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    console.error('Failed to clear stored auth session:', error);
+  }
+}
+
+function isTrustedRendererSender(event) {
+  const senderUrl = event.senderFrame?.url || event.sender?.getURL?.() || '';
+
+  if (isDev) {
+    return senderUrl.startsWith('http://localhost:3000');
+  }
+
+  return senderUrl.startsWith('file://');
+}
+
+function ensureTrustedRendererSender(event) {
+  if (!isTrustedRendererSender(event)) {
+    throw new Error('Blocked IPC request from an untrusted renderer');
+  }
+}
+
+function isAllowedExternalUrl(rawUrl) {
+  try {
+    const parsedUrl = new URL(rawUrl);
+
+    if (parsedUrl.protocol === 'https:') {
+      return true;
+    }
+
+    return (
+      isDev &&
+      parsedUrl.protocol === 'http:' &&
+      (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+let updateState = {
+  status: isDev ? 'dev' : 'idle',
+  currentVersion: app.getVersion(),
+  targetVersion: null,
+  progress: null,
+  notes: null,
+  releaseDate: null,
+  checkedAt: null,
+  error: null,
+};
+
+function sendUpdateState() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.webContents.send('app-update:state', updateState);
+}
+
+function setUpdateState(patch) {
+  updateState = {
+    ...updateState,
+    ...patch,
+  };
+
+  sendUpdateState();
+}
+
+function normalizeReleaseNotes(releaseNotes) {
+  if (typeof releaseNotes === 'string') {
+    return releaseNotes;
+  }
+
+  if (Array.isArray(releaseNotes)) {
+    return releaseNotes
+      .map((entry) => {
+        if (!entry) {
+          return '';
+        }
+
+        if (typeof entry === 'string') {
+          return entry;
+        }
+
+        if (typeof entry.note === 'string') {
+          return entry.note;
+        }
+
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  return null;
+}
+
+async function checkForUpdates() {
+  if (isDev) {
+    setUpdateState({
+      status: 'dev',
+      checkedAt: new Date().toISOString(),
+      error: null,
+    });
+    return updateState;
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return updateState;
+  } catch (error) {
+    setUpdateState({
+      status: 'error',
+      checkedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return updateState;
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -19,6 +196,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     frame: true,
     titleBarStyle: 'default',
@@ -26,32 +205,42 @@ function createWindow() {
     show: false,
   });
 
-  // Load app
   const startUrl = isDev
     ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../dist/index.html')}`;
 
   mainWindow.loadURL(startUrl);
 
-  // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    
-    // Check for updates (only in production)
-    if (!isDev) {
-      checkForUpdates();
-    }
+
+    sendUpdateState();
+
+    void checkForUpdates();
   });
 
-  // Open external links in browser
+  mainWindow.webContents.on('did-finish-load', () => {
+    sendUpdateState();
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isAllowedExternalUrl(url)) {
+      void shell.openExternal(url);
+    }
+
     return { action: 'deny' };
   });
 
-  // Handle window close - ACTUALLY CLOSE THE APP
-  mainWindow.on('close', () => {
-    // Just let it close normally
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url === mainWindow.webContents.getURL()) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (isAllowedExternalUrl(url)) {
+      void shell.openExternal(url);
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -59,73 +248,155 @@ function createWindow() {
   });
 }
 
-// Auto-update functions
-function checkForUpdates() {
-  autoUpdater.checkForUpdates();
-}
+ipcMain.handle('app-update:get-state', async (event) => {
+  ensureTrustedRendererSender(event);
+  return updateState;
+});
+ipcMain.handle('app-update:check', async (event) => {
+  ensureTrustedRendererSender(event);
+  return checkForUpdates();
+});
+ipcMain.handle('app-update:download', async (event) => {
+  ensureTrustedRendererSender(event);
+
+  if (isDev) {
+    return updateState;
+  }
+
+  if (updateState.status !== 'available') {
+    return updateState;
+  }
+
+  try {
+    await autoUpdater.downloadUpdate();
+    return updateState;
+  } catch (error) {
+    setUpdateState({
+      status: 'error',
+      error: error instanceof Error ? error.message : String(error),
+      checkedAt: new Date().toISOString(),
+    });
+    return updateState;
+  }
+});
+ipcMain.handle('app-update:install', async (event) => {
+  ensureTrustedRendererSender(event);
+
+  if (isDev || updateState.status !== 'downloaded') {
+    return;
+  }
+
+  autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.on('auth-session:get', (event) => {
+  if (!isTrustedRendererSender(event)) {
+    event.returnValue = null;
+    return;
+  }
+
+  event.returnValue = readStoredAuthSession();
+});
+
+ipcMain.on('auth-session:set', (event, nextSession) => {
+  if (!isTrustedRendererSender(event)) {
+    event.returnValue = null;
+    return;
+  }
+
+  event.returnValue = writeStoredAuthSession(nextSession);
+});
+
+ipcMain.on('auth-session:clear', (event) => {
+  if (!isTrustedRendererSender(event)) {
+    event.returnValue = false;
+    return;
+  }
+
+  clearStoredAuthSession();
+  event.returnValue = true;
+});
 
 autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for updates...');
+  setUpdateState({
+    status: 'checking',
+    checkedAt: new Date().toISOString(),
+    error: null,
+  });
 });
 
 autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
-  
-  const { dialog } = require('electron');
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update Available',
-    message: `A new version (${info.version}) is available!`,
-    buttons: ['Download Now', 'Later'],
-    defaultId: 0,
-  }).then((result) => {
-    if (result.response === 0) {
-      autoUpdater.downloadUpdate();
-    }
+  setUpdateState({
+    status: 'available',
+    targetVersion: info.version ?? null,
+    progress: 0,
+    notes: normalizeReleaseNotes(info.releaseNotes),
+    releaseDate: info.releaseDate ?? null,
+    checkedAt: new Date().toISOString(),
+    error: null,
   });
 });
 
 autoUpdater.on('update-not-available', () => {
-  console.log('No updates available');
+  setUpdateState({
+    status: 'idle',
+    targetVersion: null,
+    progress: null,
+    notes: null,
+    releaseDate: null,
+    checkedAt: new Date().toISOString(),
+    error: null,
+  });
 });
 
-autoUpdater.on('download-progress', (progressObj) => {
-  const message = `Downloaded ${Math.round(progressObj.percent)}%`;
-  console.log(message);
-  
-  if (mainWindow) {
-    mainWindow.setProgressBar(progressObj.percent / 100);
+autoUpdater.on('download-progress', (progress) => {
+  setUpdateState({
+    status: 'downloading',
+    progress: Math.round(progress.percent),
+    error: null,
+  });
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setProgressBar(progress.percent / 100);
   }
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info.version);
-  
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setProgressBar(-1);
   }
-  
-  const { dialog } = require('electron');
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update Ready',
-    message: 'Update has been downloaded. Restart to install?',
-    buttons: ['Restart Now', 'Later'],
-    defaultId: 0,
-  }).then((result) => {
-    if (result.response === 0) {
-      autoUpdater.quitAndInstall(false, true);
-    }
+
+  setUpdateState({
+    status: 'downloaded',
+    targetVersion: info.version ?? updateState.targetVersion,
+    progress: 100,
+    notes: normalizeReleaseNotes(info.releaseNotes),
+    releaseDate: info.releaseDate ?? updateState.releaseDate,
+    checkedAt: new Date().toISOString(),
+    error: null,
   });
 });
 
 autoUpdater.on('error', (error) => {
-  console.error('Auto-updater error:', error);
+  setUpdateState({
+    status: 'error',
+    checkedAt: new Date().toISOString(),
+    error: error instanceof Error ? error.message : String(error),
+  });
 });
 
-// App lifecycle
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(false);
+  });
+
   createWindow();
+
+  if (!isDev) {
+    updateCheckInterval = setInterval(() => {
+      void checkForUpdates();
+    }, 30 * 60 * 1000);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -138,7 +409,13 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 
-// Handle second instance
+app.on('before-quit', () => {
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval);
+    updateCheckInterval = null;
+  }
+});
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -146,7 +423,10 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+
       mainWindow.focus();
     }
   });

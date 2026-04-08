@@ -46,8 +46,10 @@ async function generateStudentId(
 export async function getAllStudents(
   branchId?: number,
   includeInactive: boolean = false,
+  search?: string,
+  limit?: number,
 ): Promise<Student[]> {
-  const values: number[] = [];
+  const values: Array<number | string> = [];
   let query = `
     SELECT *
     FROM students
@@ -63,7 +65,27 @@ export async function getAllStudents(
     query += ` AND branch_id = $${values.length}`;
   }
 
-  query += ' ORDER BY created_at DESC';
+  if (search?.trim()) {
+    values.push(`%${search.trim().toLowerCase()}%`);
+    query += `
+      AND (
+        LOWER(name) LIKE $${values.length}
+        OR LOWER(student_id) LIKE $${values.length}
+        OR phone LIKE $${values.length}
+        OR LOWER(COALESCE(email, '')) LIKE $${values.length}
+        OR LOWER(city) LIKE $${values.length}
+        OR LOWER(COALESCE(id_proof_number, '')) LIKE $${values.length}
+      )
+    `;
+    query += ' ORDER BY is_active DESC, name ASC, created_at DESC';
+  } else {
+    query += ' ORDER BY created_at DESC';
+  }
+
+  if (limit != null) {
+    values.push(limit);
+    query += ` LIMIT $${values.length}`;
+  }
 
   const result = await pool.query(query, values);
   return result.rows;

@@ -11,6 +11,9 @@ import type {
   DashboardSummary,
 } from './dashboard.types.ts';
 
+const DASHBOARD_PAYMENT_WINDOW_MONTHS = 3;
+const DASHBOARD_RECENT_PAYMENTS_LIMIT = 12;
+
 function formatDate(value: Date): string {
   return value.toLocaleDateString('en-IN', {
     day: '2-digit',
@@ -174,6 +177,10 @@ async function getRecentPayments(branchId?: number): Promise<DashboardRecentPaym
       p.id AS payment_id,
       p.amount,
       p.payment_date,
+      p.status,
+      COALESCE(p.verified_at, p.created_at) AS activity_at,
+      p.created_at AS submitted_at,
+      p.verified_at,
       p.receipt_number,
       s.id AS student_id,
       s.name AS student_name,
@@ -183,7 +190,11 @@ async function getRecentPayments(branchId?: number): Promise<DashboardRecentPaym
     FROM fee_payments p
     JOIN students s ON s.id = p.student_id
     JOIN branches b ON b.id = s.branch_id
-    WHERE p.status = 'paid'
+    WHERE (
+      p.status = 'paid'
+      OR (p.status = 'pending' AND p.gateway_provider IS NULL)
+    )
+      AND p.payment_date >= (CURRENT_DATE - INTERVAL '${DASHBOARD_PAYMENT_WINDOW_MONTHS} months')
   `;
 
   if (branchId !== undefined && branchId !== null) {
@@ -191,7 +202,13 @@ async function getRecentPayments(branchId?: number): Promise<DashboardRecentPaym
     query += ` AND s.branch_id = $${params.length}`;
   }
 
-  query += ' ORDER BY p.payment_date DESC LIMIT 5';
+  query += `
+    ORDER BY
+      COALESCE(p.verified_at, p.created_at) DESC,
+      p.created_at DESC,
+      p.id DESC
+    LIMIT ${DASHBOARD_RECENT_PAYMENTS_LIMIT}
+  `;
   const result = await pool.query<DashboardRecentPayment>(query, params);
   return result.rows;
 }

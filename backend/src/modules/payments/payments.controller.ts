@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../auth/auth.types.ts';
 import * as paymentService from './payments.service.ts';
@@ -6,13 +7,15 @@ import type {
   ConfirmPaymentDTO,
   ConfirmPaymentWebhookDTO,
   PaymentCommunicationQueryOptions,
+  PaymentHistoryQueryOptions,
   RecordPaymentDTO,
   SendPaymentReceiptDTO,
   SendPaymentReminderDTO,
 } from './payments.types.ts';
 import {
+  rememberProcessedCashfreeWebhook,
   parseCashfreeSuccessfulPaymentWebhook,
-  verifyCashfreeWebhookSignature,
+  validateCashfreeWebhookRequest,
 } from './payments.cashfree.ts';
 import {
   isAuthorizationError,
@@ -47,6 +50,24 @@ function parseInteger(value: unknown): number | undefined {
 
 function isValidRequestedChannel(value: unknown): boolean {
   return value == null || value === 'sms' || value === 'whatsapp' || value === 'both';
+}
+
+function secretsMatch(
+  configuredSecret: string | null | undefined,
+  providedSecret: string | null | undefined,
+): boolean {
+  if (!configuredSecret || !providedSecret) {
+    return false;
+  }
+
+  const configuredBuffer = Buffer.from(configuredSecret);
+  const providedBuffer = Buffer.from(providedSecret);
+
+  if (configuredBuffer.length !== providedBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(configuredBuffer, providedBuffer);
 }
 
 interface RawBodyRequest extends Request {
@@ -182,7 +203,7 @@ export async function confirmPaymentWebhook(req: Request, res: Response) {
       });
     }
 
-    if (!providedSecret || providedSecret !== configuredSecret) {
+    if (!secretsMatch(configuredSecret, providedSecret)) {
       return res.status(401).json({
         success: false,
         error: 'Invalid webhook secret',
@@ -278,10 +299,19 @@ export async function handleCashfreeWebhook(req: RawBodyRequest, res: Response) 
     const timestamp = req.get('x-webhook-timestamp');
     const signature = req.get('x-webhook-signature');
 
-    if (!verifyCashfreeWebhookSignature(rawBody, timestamp, signature)) {
+    const validation = validateCashfreeWebhookRequest(rawBody, timestamp, signature);
+
+    if (!validation.isValid) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid Cashfree webhook signature',
+        error: validation.error ?? 'Invalid Cashfree webhook request',
+      });
+    }
+
+    if (validation.isDuplicate) {
+      return res.status(200).json({
+        success: true,
+        message: 'Cashfree webhook already processed',
       });
     }
 
@@ -303,6 +333,7 @@ export async function handleCashfreeWebhook(req: RawBodyRequest, res: Response) 
       ...(paymentUpdate.amount != null ? { amount: paymentUpdate.amount } : {}),
     };
     const payment = await paymentService.confirmPaymentFromWebhook(webhookConfirmation);
+    rememberProcessedCashfreeWebhook(timestamp, signature);
 
     res.status(200).json({
       success: true,
@@ -419,27 +450,49 @@ export async function getAllPayments(req: AuthRequest, res: Response) {
   try {
     const month = req.query.month ? Number.parseInt(req.query.month as string, 10) : undefined;
     const year = req.query.year ? Number.parseInt(req.query.year as string, 10) : undefined;
+    const search =
+      typeof req.query.search === 'string' && req.query.search.trim() !== ''
+        ? req.query.search.trim()
+        : undefined;
     const requestedBranchId = parseBranchId(req.query.branch_id);
-    const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
+    const page = parseInteger(req.query.page) ?? 1;
+    const limit = parseInteger(req.query.limit) ?? 25;
 
     // Only validate if branch_id was actually provided in query
     if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
 
+    if (Number.isNaN(page) || page < 1) {
+      return badRequest(res, 'Invalid page');
+    }
+
+    if (Number.isNaN(limit) || limit < 1 || limit > 100) {
+      return badRequest(res, 'Invalid limit. Must be between 1 and 100');
+    }
+
     const user = requireAuthenticatedUser(req.user);
     const branchId = resolveAuthorizedBranchId(user, requestedBranchId);
-    const payments = await paymentService.getAllPayments(
-      month,
-      year,
-      branchId,
+    const options: PaymentHistoryQueryOptions = {
+      ...(month != null ? { month } : {}),
+      ...(year != null ? { year } : {}),
+      ...(branchId != null ? { branchId } : {}),
+      ...(search ? { search } : {}),
+      page,
       limit,
-    );
+    };
+    const paymentHistory = await paymentService.getAllPayments(options);
 
     res.status(200).json({
       success: true,
-      count: payments.length,
-      data: payments,
+      count: paymentHistory.payments.length,
+      data: {
+        data: paymentHistory.payments,
+        total: paymentHistory.total,
+        page: paymentHistory.page,
+        limit: paymentHistory.limit,
+        totalPages: paymentHistory.totalPages,
+      },
     });
   } catch (error) {
     if (isAuthorizationError(error)) {
@@ -488,6 +541,52 @@ export async function getPendingPayments(req: AuthRequest, res: Response) {
     res.status(500).json({
       success: false,
       error: 'Failed to get pending payments',
+    });
+  }
+}
+
+export async function downloadMonthlyPaymentHistoryPdf(req: AuthRequest, res: Response) {
+  try {
+    const month = Number.parseInt(req.params.month as string, 10);
+    const year = Number.parseInt(req.params.year as string, 10);
+    const requestedBranchId = parseBranchId(req.query.branch_id);
+
+    if (Number.isNaN(month) || Number.isNaN(year)) {
+      return badRequest(res, 'Invalid month or year');
+    }
+
+    if (month < 1 || month > 12) {
+      return badRequest(res, 'Month must be between 1 and 12');
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (year < 2020 || year > currentYear + 1) {
+      return badRequest(res, `Year must be between 2020 and ${currentYear + 1}`);
+    }
+
+    if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
+      return badRequest(res, 'Invalid branch ID');
+    }
+
+    const user = requireAuthenticatedUser(req.user);
+    const branchId = resolveAuthorizedBranchId(user, requestedBranchId);
+    const report = await paymentService.exportMonthlyPaymentHistoryPdf(month, year, branchId);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${report.filename}"`);
+    res.status(200).send(report.buffer);
+  } catch (error) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    console.error('Download monthly payment history PDF error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to export monthly payment history PDF',
     });
   }
 }
@@ -768,24 +867,25 @@ export async function sendPaymentReceipt(req: AuthRequest, res: Response) {
   }
 }
 
-// GET /api/payments/:paymentId - Get single payment (PUBLIC for student page)
-export async function getPaymentById(req: Request, res: Response) {
+// GET /api/payments/public/:accessToken - Get a public payment view for the student payment page
+export async function getPublicPaymentByAccessToken(req: Request, res: Response) {
   try {
-    const paymentId = Number.parseInt(req.params.paymentId as string, 10);
+    const accessToken =
+      typeof req.params.accessToken === 'string' ? req.params.accessToken.trim() : '';
 
-    if (Number.isNaN(paymentId)) {
+    if (!accessToken) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid payment ID',
+        error: 'Invalid payment access token',
       });
     }
 
-    const payment = await paymentService.getPaymentById(paymentId);
+    const payment = await paymentService.getPublicPaymentByAccessToken(accessToken);
 
     if (!payment) {
       return res.status(404).json({
         success: false,
-        error: 'Payment not found',
+        error: 'Payment link is invalid, expired, or no longer available',
       });
     }
 
@@ -794,10 +894,10 @@ export async function getPaymentById(req: Request, res: Response) {
       data: payment,
     });
   } catch (error) {
-    console.error('Get payment by id error:', error);
+    console.error('Get public payment by token error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch payment',
+      error: 'Failed to fetch payment details',
     });
   }
 }

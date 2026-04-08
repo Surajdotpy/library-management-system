@@ -79,6 +79,20 @@ export interface PaymentGatewaySession {
 export interface CashfreePaymentRequestResult {
   payment: Payment;
   session: PaymentGatewaySession;
+  public_payment_url: string;
+  public_access_expires_at: string | null;
+}
+
+export interface PublicPaymentDetails {
+  id: number;
+  student_name: string;
+  branch_name: string;
+  amount: number;
+  status: 'paid' | 'pending' | 'failed' | 'refunded';
+  receipt_number: string;
+  gateway_upi_intent: string | null;
+  gateway_checkout_url: string | null;
+  gateway_expires_at: string | null;
 }
 
 export type PaymentDueStatus = 'overdue' | 'due_today' | 'due_soon' | 'current';
@@ -174,6 +188,8 @@ export interface PaymentCommunication {
 export interface PaymentQueryOptions {
   month?: number;
   year?: number;
+  search?: string;
+  page?: number;
   limit?: number;
 }
 

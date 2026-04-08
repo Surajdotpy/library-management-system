@@ -1,8 +1,8 @@
-export type NotificationType = 'payment_received';
+export type NotificationType = 'app_update' | 'payment_received' | 'payment_submitted';
 export type NotificationSeverity = 'critical' | 'warning' | 'info';
 
 export interface NotificationItem {
-  id: number;
+  id: number | string;
   type: NotificationType;
   severity: NotificationSeverity;
   branch_id: number | null;

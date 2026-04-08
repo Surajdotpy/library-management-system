@@ -110,6 +110,36 @@ export async function createPaymentReceivedNotification(
   });
 }
 
+export async function createPaymentSubmittedNotification(
+  db: Queryable,
+  input: {
+    paymentId: number;
+    studentId: number;
+    studentName: string;
+    branchId: number;
+    branchName: string;
+    amount: number;
+    receiptNumber: string;
+  },
+): Promise<void> {
+  await createNotification(db, {
+    type: 'payment_submitted',
+    severity: 'info',
+    branch_id: input.branchId,
+    title: `${input.studentName} payment submitted`,
+    description: `${formatCurrency(input.amount)} was submitted for receipt ${input.receiptNumber} at ${input.branchName} and is awaiting verification.`,
+    action_route: '/payments',
+    metadata: {
+      payment_id: input.paymentId,
+      student_id: input.studentId,
+      receipt_number: input.receiptNumber,
+      amount: input.amount,
+      status: 'pending',
+    },
+    source_key: `payment-submitted-${input.paymentId}`,
+  });
+}
+
 async function getUnreadCountForUser(user: JWTPayload): Promise<number> {
   const visibleBranchId = getVisibleBranchId(user);
   const params: Array<number> = [user.userId];
@@ -164,7 +194,7 @@ export async function getNotificationsForUser(
     query += ` AND n.branch_id = $${params.length}`;
   }
 
-  params.push(Math.min(limit, 50));
+  params.push(Math.min(limit, 100));
   query += `
     ORDER BY
       CASE WHEN nr.notification_id IS NULL THEN 0 ELSE 1 END,

@@ -1,12 +1,11 @@
+import fs from 'node:fs';
 import { Pool, type PoolConfig } from 'pg';
-import dotenv from 'dotenv';
+import './load-env.ts';
 
-// Load correct .env file based on environment
-if (process.env.NODE_ENV === 'test') {
-  dotenv.config({ path: '.env.test' });
-} else {
-  dotenv.config();
-}
+const shouldUseSsl =
+  process.env.DATABASE_SSL === 'true' || process.env.NODE_ENV === 'production';
+const allowSelfSignedCertificates = process.env.DATABASE_SSL_ALLOW_SELF_SIGNED === 'true';
+const databaseCaPath = process.env.DATABASE_SSL_CA_PATH?.trim();
 
 const poolConfig: PoolConfig = {
   host: process.env.DATABASE_HOST,
@@ -20,10 +19,11 @@ const poolConfig: PoolConfig = {
   idleTimeoutMillis: 30000, // Close idle connections after 30s
   connectionTimeoutMillis: 2000, // Timeout if can't connect in 2s
   
-  // SSL for production
-  ...(process.env.NODE_ENV === 'production' && {
+  // SSL for production and any explicitly secured deployments.
+  ...(shouldUseSsl && {
     ssl: {
-      rejectUnauthorized: false
+      rejectUnauthorized: !allowSelfSignedCertificates,
+      ...(databaseCaPath ? { ca: fs.readFileSync(databaseCaPath, 'utf8') } : {}),
     }
   })
 };

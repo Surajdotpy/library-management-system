@@ -26,7 +26,11 @@ export const authApi = {
   /**
    * Logout user (client-side only)
    */
-  logout: () => {
-    clearStoredSession();
+  logout: async (): Promise<void> => {
+    try {
+      await apiClient.post('/auth/logout');
+    } finally {
+      clearStoredSession();
+    }
   },
 };

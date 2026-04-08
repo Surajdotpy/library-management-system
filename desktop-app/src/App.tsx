@@ -64,7 +64,7 @@ function App() {
             <Route path={routes.login} element={<LoginPage />} />
           </Route>
 
-          <Route path="/pay/:paymentId" element={<StudentPaymentPage />} />
+          <Route path="/pay/:accessToken" element={<StudentPaymentPage />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path={routes.dashboard} element={<DashboardPage />} />

@@ -13,7 +13,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { routes } from '@/config/routes';
-import { clearStoredSession } from '@/lib/auth/session';
+import { authApi } from '@/lib/api';
 
 interface SidebarProps {
   userRole: 'superadmin' | 'admin';
@@ -81,8 +81,9 @@ export function Sidebar({ userRole }: SidebarProps) {
       <div className="p-4 border-t border-purple-700/50">
         <button
           onClick={() => {
-            clearStoredSession();
-            navigate(routes.login, { replace: true });
+            void authApi.logout().finally(() => {
+              navigate(routes.login, { replace: true });
+            });
           }}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-300 hover:bg-red-500/10 hover:text-red-200 transition-all"
         >

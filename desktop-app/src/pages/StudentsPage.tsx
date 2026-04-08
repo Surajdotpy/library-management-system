@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
@@ -13,7 +13,9 @@ import {
   Search,
   Trash2,
   Users,
+  X,
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AddStudentWizard } from '@/components/features/students/AddStudentWizard';
 import { EditStudentWizard } from '@/components/features/students/EditStudentWizard';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -23,6 +25,31 @@ import { getStoredUser } from '@/lib/auth/session';
 import { useStudents } from '@/lib/hooks/useStudents';
 import { STUDY_PLANS } from '@/types';
 import type { Student } from '@/types';
+
+function formatOptionalValue(value: string | number | null | undefined): string {
+  if (value == null) {
+    return 'Not provided';
+  }
+
+  const normalizedValue = String(value).trim();
+  return normalizedValue ? normalizedValue : 'Not provided';
+}
+
+function formatLabel(value: string | null | undefined): string {
+  if (!value) {
+    return 'Not provided';
+  }
+
+  return value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+interface StudentsPageLocationState {
+  openStudentId?: number;
+  quickSearchQuery?: string;
+}
 
 export default function StudentsPage() {
   const {
@@ -34,6 +61,8 @@ export default function StudentsPage() {
     deleteStudent,
     reactivateStudent,
   } = useStudents();
+  const location = useLocation();
+  const navigate = useNavigate();
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'superadmin';
   const branchScopeLabel = isSuperAdmin
@@ -43,6 +72,7 @@ export default function StudentsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
+  const [studentToView, setStudentToView] = useState<Student | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -74,10 +104,6 @@ export default function StudentsPage() {
 
   const activeStudentsCount = students.filter((student) => student.is_active).length;
   const inactiveStudentsCount = students.length - activeStudentsCount;
-  const monthlyRevenue = students
-    .filter((student) => student.is_active)
-    .reduce((sum, student) => sum + student.monthly_fee, 0);
-
   const getPlanDetails = (planValue: string) =>
     STUDY_PLANS.find((plan) => plan.value === planValue);
 
@@ -92,6 +118,33 @@ export default function StudentsPage() {
     setStudentToEdit(student);
     setIsEditModalOpen(true);
   };
+
+  const handleViewStudent = (student: Student) => {
+    setStudentToView(student);
+  };
+
+  const handleCloseStudentDetails = () => {
+    setStudentToView(null);
+  };
+
+  useEffect(() => {
+    const state = location.state as StudentsPageLocationState | null;
+
+    if (!state?.openStudentId || students.length === 0) {
+      return;
+    }
+
+    const matchedStudent = students.find((student) => student.id === state.openStudentId);
+
+    if (!matchedStudent) {
+      return;
+    }
+
+    setStatusFilter('all');
+    setSearchQuery(state.quickSearchQuery || matchedStudent.name);
+    setStudentToView(matchedStudent);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, students]);
 
   const handleDelete = async (id: number, name: string) => {
     const confirmed = window.confirm(
@@ -226,12 +279,20 @@ export default function StudentsPage() {
                         className="transition-colors hover:bg-gray-50"
                       >
                         <td className="px-6 py-4">
-                          <div>
+                          <button
+                            type="button"
+                            onClick={() => handleViewStudent(student)}
+                            className="rounded-lg text-left transition-colors hover:text-purple-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                            title="View full student details"
+                          >
                             <p className="font-semibold text-gray-900">{student.name}</p>
                             <p className="text-sm font-medium text-purple-600">
                               {student.student_id}
                             </p>
-                          </div>
+                            <p className="mt-1 text-xs font-medium text-gray-500">
+                              Click to view full profile
+                            </p>
+                          </button>
                         </td>
 
                         {isSuperAdmin && (
@@ -375,7 +436,7 @@ export default function StudentsPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="grid grid-cols-1 gap-4 md:grid-cols-4"
+            className="grid grid-cols-1 gap-4 md:grid-cols-3"
           >
             <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
               <div className="flex items-center justify-between">
@@ -396,20 +457,6 @@ export default function StudentsPage() {
                   <p className="text-3xl font-bold text-green-900">{activeStudentsCount}</p>
                 </div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500">
-                  <Users className="h-6 w-6 text-white" />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="mb-1 text-sm font-medium text-purple-600">Monthly Revenue</p>
-                  <p className="text-3xl font-bold text-purple-900">
-                    INR {monthlyRevenue.toLocaleString('en-IN')}
-                  </p>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500">
                   <Users className="h-6 w-6 text-white" />
                 </div>
               </div>
@@ -594,6 +641,215 @@ export default function StudentsPage() {
           </div>
         )}
       </div>
+
+      {studentToView && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={handleCloseStudentDetails}
+          />
+
+          <div className="flex min-h-screen items-center justify-center px-4 py-8">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="relative w-full max-w-5xl rounded-2xl bg-white shadow-2xl"
+            >
+              <div className="rounded-t-2xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide text-white/80">
+                      Student Profile
+                    </p>
+                    <h2 className="mt-1 text-2xl font-bold text-white">
+                      {studentToView.name}
+                    </h2>
+                    <p className="mt-2 text-sm text-white/80">
+                      {studentToView.student_id} | {getBranchName(studentToView.branch_id)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Badge variant={studentToView.is_active ? 'success' : 'danger'}>
+                      {studentToView.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={handleCloseStudentDetails}
+                      className="rounded-lg p-2 text-white transition-colors hover:bg-white/20"
+                    >
+                      <X className="h-6 w-6" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="max-h-[75vh] space-y-6 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <Card className="border-blue-100 bg-blue-50/70">
+                    <p className="text-sm font-medium text-blue-700">Study Plan</p>
+                    <p className="mt-2 text-lg font-bold text-blue-950">
+                      {getPlanDetails(studentToView.study_plan)?.label ||
+                        formatLabel(studentToView.study_plan)}
+                    </p>
+                    <p className="mt-1 text-sm text-blue-800">
+                      INR {studentToView.monthly_fee.toLocaleString('en-IN')}/month
+                    </p>
+                  </Card>
+
+                  <Card className="border-emerald-100 bg-emerald-50/70">
+                    <p className="text-sm font-medium text-emerald-700">Seat Number</p>
+                    <p className="mt-2 text-lg font-bold text-emerald-950">
+                      {formatOptionalValue(studentToView.seat_number)}
+                    </p>
+                    <p className="mt-1 text-sm text-emerald-800">
+                      Joined {formatDate(studentToView.created_at)}
+                    </p>
+                  </Card>
+
+                  <Card className="border-amber-100 bg-amber-50/70">
+                    <p className="text-sm font-medium text-amber-700">Last Updated</p>
+                    <p className="mt-2 text-lg font-bold text-amber-950">
+                      {formatDate(studentToView.updated_at)}
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      Branch {getBranchName(studentToView.branch_id)}
+                    </p>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900">Basic Details</h3>
+                    <div className="mt-4 space-y-3 text-sm text-gray-700">
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Full Name</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.name}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Student ID</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.student_id}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Date of Birth</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {formatDate(studentToView.date_of_birth)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Gender</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {formatLabel(studentToView.gender)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="font-medium text-gray-500">Blood Group</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {formatOptionalValue(studentToView.blood_group)}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900">Contact Details</h3>
+                    <div className="mt-4 space-y-3 text-sm text-gray-700">
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Phone</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.phone}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Email</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {formatOptionalValue(studentToView.email)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Address</span>
+                        <span className="max-w-[18rem] text-right font-semibold text-gray-900">
+                          {studentToView.address}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">City</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.city}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">State</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.state}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="font-medium text-gray-500">Pincode</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.pincode}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900">Emergency Contact</h3>
+                    <div className="mt-4 space-y-3 text-sm text-gray-700">
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Contact Name</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.emergency_contact_name}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">Phone</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.emergency_contact_phone}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="font-medium text-gray-500">Relation</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {studentToView.emergency_contact_relation}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900">Identity and Notes</h3>
+                    <div className="mt-4 space-y-3 text-sm text-gray-700">
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">ID Proof Type</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {formatOptionalValue(studentToView.id_proof_type)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
+                        <span className="font-medium text-gray-500">ID Proof Number</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {formatOptionalValue(studentToView.id_proof_number)}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <span className="block font-medium text-gray-500">Notes</span>
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm font-medium text-gray-800">
+                          {formatOptionalValue(studentToView.notes)}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
 
       <AddStudentWizard
         isOpen={isAddModalOpen}

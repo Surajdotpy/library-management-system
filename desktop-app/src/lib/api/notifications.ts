@@ -6,7 +6,7 @@ export const notificationsApi = {
    * Fetch all notifications for the authenticated user.
    * Returns the list and the authoritative unread count from the backend.
    */
-  async getAll(limit: number = 20): Promise<NotificationList> {
+  async getAll(limit: number = 100): Promise<NotificationList> {
     const response = await apiClient.get<ApiResponse<NotificationList>>('/notifications', {
       params: { limit },
     });

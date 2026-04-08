@@ -1,6 +1,6 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import './config/load-env.ts';
 import authRoutes from './modules/auth/auth.routes.ts';
 import attendanceRoutes from './modules/attendance/attendance.routes.ts';
 import branchRoutes from './modules/branches/branches.routes.ts';
@@ -11,10 +11,10 @@ import seatRoutes from './modules/seats/seats.routes.ts';
 import studentRoutes from './modules/students/students.routes.ts';
 import userRoutes from './modules/users/users.routes.ts';
 import reportsRoutes from './modules/reports/reports.routes.ts';
-
-dotenv.config();
+import { generalApiRateLimiter } from './middleware/rate-limit.middleware.ts';
 
 const app: Application = express();
+const API_BODY_LIMIT = process.env.API_BODY_LIMIT || '1mb';
 
 app.use(
   cors({
@@ -25,13 +25,13 @@ app.use(
 
 app.use(
   express.json({
-    limit: '10mb',
+    limit: API_BODY_LIMIT,
     verify: (req, _res, buffer) => {
       (req as Request & { rawBody?: string }).rawBody = buffer.toString('utf8');
     },
   }),
 );
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: API_BODY_LIMIT }));
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const timestamp = new Date().toISOString();
@@ -67,6 +67,8 @@ app.get('/', (_req: Request, res: Response) => {
     },
   });
 });
+
+app.use('/api', generalApiRateLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);

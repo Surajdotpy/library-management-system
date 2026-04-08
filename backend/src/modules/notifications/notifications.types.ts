@@ -1,4 +1,4 @@
-export type AppNotificationType = 'payment_received';
+export type AppNotificationType = 'payment_received' | 'payment_submitted';
 export type AppNotificationSeverity = 'critical' | 'warning' | 'info';
 
 export interface AppNotification {
