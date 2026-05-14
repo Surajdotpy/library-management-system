@@ -212,6 +212,8 @@ export interface PublicPaymentDetails {
   amount: number;
   status: PaymentStatus;
   receipt_number: string;
+  gateway_mode: PaymentGatewayMode | null;
+  gateway_session_id: string | null;
   gateway_upi_intent: string | null;
   gateway_checkout_url: string | null;
   gateway_expires_at: Date | null;

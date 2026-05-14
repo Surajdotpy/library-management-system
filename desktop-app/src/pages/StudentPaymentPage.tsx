@@ -2,6 +2,11 @@ import { useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { PublicPaymentDetails } from '@/types';
+import { openCashfreeCheckout } from '@/lib/payments/cashfree';
+
+const PUBLIC_PAYMENTS_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
+).replace(/\/+$/, '');
 
 export default function StudentPaymentPage() {
   const { accessToken } = useParams();
@@ -10,11 +15,45 @@ export default function StudentPaymentPage() {
   const [error, setError] = useState<string | null>(null);
 
   const encodedAccessToken = accessToken ? encodeURIComponent(accessToken) : null;
+  const publicPaymentUrl = encodedAccessToken
+    ? `${PUBLIC_PAYMENTS_BASE_URL}/payments/public/${encodedAccessToken}`
+    : null;
+
+  async function handleOpenCashfreeCheckout() {
+    if (!payment?.gateway_session_id) {
+      setError('Cashfree payment session is unavailable for this payment.');
+      return;
+    }
+
+    try {
+      setError(null);
+      await openCashfreeCheckout({
+        mode: payment.gateway_mode,
+        paymentSessionId: payment.gateway_session_id,
+        redirectTarget: '_self',
+      });
+    } catch (checkoutError) {
+      console.error('Error opening Cashfree checkout:', checkoutError);
+      setError(
+        checkoutError instanceof Error
+          ? checkoutError.message
+          : 'Unable to open the Cashfree checkout right now',
+      );
+    }
+  }
 
   useEffect(() => {
     async function fetchPayment() {
+      if (!publicPaymentUrl) {
+        setPayment(null);
+        setLoading(false);
+        setError('Payment link is invalid or expired');
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/payments/public/${encodedAccessToken}`);
+        setLoading(true);
+        const res = await fetch(publicPaymentUrl);
         const data = await res.json();
 
         if (!res.ok) {
@@ -34,23 +73,23 @@ export default function StudentPaymentPage() {
       }
     }
 
-    if (encodedAccessToken) {
+    if (publicPaymentUrl) {
       void fetchPayment();
       return;
     }
 
     setLoading(false);
     setError('Payment link is invalid or expired');
-  }, [encodedAccessToken]);
+  }, [publicPaymentUrl]);
 
   useEffect(() => {
-    if (!encodedAccessToken) {
+    if (!publicPaymentUrl) {
       return undefined;
     }
 
     const interval = window.setInterval(async () => {
       try {
-        const res = await fetch(`/api/payments/public/${encodedAccessToken}`);
+        const res = await fetch(publicPaymentUrl);
         const data = await res.json();
 
         if (!res.ok) {
@@ -67,7 +106,7 @@ export default function StudentPaymentPage() {
     }, 5000);
 
     return () => window.clearInterval(interval);
-  }, [encodedAccessToken]);
+  }, [publicPaymentUrl]);
 
   if (loading) {
     return <div className="mt-20 text-center">Loading...</div>;
@@ -111,9 +150,31 @@ export default function StudentPaymentPage() {
         </p>
       )}
 
+      {!payment.gateway_upi_intent && payment.gateway_session_id && (
+        <p className="mt-4">
+          <button
+            type="button"
+            onClick={() => void handleOpenCashfreeCheckout()}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700"
+          >
+            Open Cashfree Checkout
+          </button>
+        </p>
+      )}
+
       <p className="mt-4 text-gray-500">
-        {payment.gateway_upi_intent ? 'Scan QR to pay' : 'Use the secure payment link to continue'}
+        {payment.gateway_upi_intent
+          ? 'Scan QR to pay'
+          : payment.gateway_session_id
+            ? 'Use the Cashfree checkout button to continue'
+            : 'Use the secure payment link to continue'}
       </p>
+
+      {!payment.gateway_upi_intent && !payment.gateway_checkout_url && (
+        <p className="mt-4 text-sm text-amber-600">
+          Payment is pending. If the QR did not load, continue with the Cashfree checkout button.
+        </p>
+      )}
     </div>
   );
 }

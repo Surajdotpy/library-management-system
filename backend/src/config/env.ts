@@ -1,5 +1,16 @@
 import './load-env.ts';
 
+function readEnvString(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key]?.trim();
+        if (value) {
+            return value;
+        }
+    }
+
+    return "";
+}
+
 export const env = {
     nodeEnv: process.env.NODE_ENV || "development",
     port: parseInt(process.env.PORT || "5000", 10),
@@ -13,8 +24,8 @@ export const env = {
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
     paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || "",
     cashfreeMode: process.env.CASHFREE_MODE?.trim() || "mock",
-    cashfreeAppId: process.env.CASHFREE_APP_ID || "",
-    cashfreeSecretKey: process.env.CASHFREE_SECRET_KEY || "",
-    cashfreeWebhookSecret: process.env.CASHFREE_WEBHOOK_SECRET || "",
-    cashfreeApiVersion: process.env.CASHFREE_API_VERSION || "2025-01-01",
+    cashfreeAppId: readEnvString("CASHFREE_APP_ID", "CASHFREE_CLIENT_ID"),
+    cashfreeSecretKey: readEnvString("CASHFREE_SECRET_KEY", "CASHFREE_CLIENT_SECRET"),
+    cashfreeWebhookSecret: readEnvString("CASHFREE_WEBHOOK_SECRET"),
+    cashfreeApiVersion: readEnvString("CASHFREE_API_VERSION") || "2023-08-01",
 };

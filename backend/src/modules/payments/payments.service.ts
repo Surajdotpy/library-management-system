@@ -2179,6 +2179,8 @@ export async function getPublicPaymentByAccessToken(
         p.amount,
         p.status,
         p.receipt_number,
+        p.gateway_mode,
+        p.gateway_session_id,
         p.gateway_upi_intent,
         p.gateway_checkout_url,
         p.gateway_expires_at

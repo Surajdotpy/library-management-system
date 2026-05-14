@@ -24,13 +24,13 @@ import { Badge, Button, Card, Input } from '@/components/ui';
 import { getBranchName } from '@/config/branches';
 import { getStoredUser } from '@/lib/auth/session';
 import { paymentsApi, studentsApi } from '@/lib/api';
+import { openCashfreeCheckout } from '@/lib/payments/cashfree';
 import type {
   CashfreePaymentRequestResult,
   MonthlyRevenue,
   PaymentCommunication,
   Payment,
   PendingPayment,
-  RecordPaymentRequest,
   Student,
 } from '@/types';
 
@@ -210,6 +210,14 @@ interface PaymentsPageLocationState {
   historyYearFilter?: number;
 }
 
+interface PaymentFormState {
+  student_id: number | null;
+  amount: number;
+  payment_method: 'upi';
+  transaction_id: string;
+  notes: string;
+}
+
 export default function PaymentsPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -251,8 +259,8 @@ export default function PaymentsPage() {
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [historyExporting, setHistoryExporting] = useState(false);
   const [historyExportError, setHistoryExportError] = useState<string | null>(null);
-  const [paymentForm, setPaymentForm] = useState<RecordPaymentRequest>({
-    student_id: undefined as any,
+  const [paymentForm, setPaymentForm] = useState<PaymentFormState>({
+    student_id: null,
     amount: 0,
     payment_method: 'upi',
     transaction_id: '',
@@ -424,13 +432,18 @@ export default function PaymentsPage() {
 
   const selectedLatestPayment =
     selectedStudentPayments.find((payment) => payment.status === 'paid') ?? null;
-  const selectedPendingSubmission =
+  const selectedPendingPayment =
     selectedStudentPayments.find((payment) => payment.status === 'pending') ?? null;
   const selectedPendingCashfreePayment =
     selectedStudentPayments.find(
       (payment) =>
         payment.status === 'pending' && Boolean(payment.transaction_id?.startsWith('CFPAY-')),
     ) ?? null;
+  const selectedPendingManualPayment =
+    selectedPendingPayment && selectedPendingPayment.id !== selectedPendingCashfreePayment?.id
+      ? selectedPendingPayment
+      : null;
+  const hasSelectedPendingPayment = Boolean(selectedPendingPayment);
   const activeCashfreeSession =
     cashfreeRequest?.session ?? getSavedCashfreeSession(selectedPendingCashfreePayment);
   const cashfreeScanValue = getCashfreeScanValue(activeCashfreeSession);
@@ -528,9 +541,9 @@ export default function PaymentsPage() {
     );
   }, [canExportMonthlyHistory, historyMonthFilter, historyYearFilter]);
 
-  const updatePaymentForm = <K extends keyof RecordPaymentRequest>(
+  const updatePaymentForm = <K extends keyof PaymentFormState>(
     field: K,
-    value: RecordPaymentRequest[K],
+    value: PaymentFormState[K],
   ) => {
     setPaymentForm((previous) => ({
       ...previous,
@@ -546,8 +559,9 @@ export default function PaymentsPage() {
     }
   };
 
-  const selectStudentForPayment = (studentId: number) => {
-    const student = activeStudents.find((item) => item.id === studentId);
+  const selectStudentForPayment = (studentId: number | null) => {
+    const student =
+      studentId != null ? activeStudents.find((item) => item.id === studentId) : undefined;
 
     setPaymentForm((previous) => ({
       ...previous,
@@ -611,7 +625,7 @@ export default function PaymentsPage() {
         'Payment submitted for verification. Coverage, receipt delivery, and superadmin notification will update only after confirmation.',
       );
       setPaymentForm({
-        student_id: 0,
+        student_id: null,
         amount: 0,
         payment_method: 'upi',
         transaction_id: '',
@@ -703,6 +717,31 @@ export default function PaymentsPage() {
     } catch (error) {
       console.error('Failed to copy Cashfree payment link.', error);
       setPaymentError('Unable to copy the Cashfree payment link on this device.');
+    }
+  };
+
+  const handleOpenCashfreeCheckout = async () => {
+    if (!activeCashfreeSession?.payment_session_id) {
+      setPaymentError('Cashfree payment session ID is not available for this request.');
+      return;
+    }
+
+    try {
+      setPaymentError(null);
+      setPaymentSuccess(null);
+      await openCashfreeCheckout({
+        mode: activeCashfreeSession.mode,
+        paymentSessionId: activeCashfreeSession.payment_session_id,
+        redirectTarget: '_blank',
+      });
+      setPaymentSuccess(
+        'Cashfree checkout opened. Complete the payment there, then return here and wait for the webhook to mark it paid.',
+      );
+    } catch (error) {
+      console.error('Failed to open Cashfree checkout.', error);
+      setPaymentError(
+        error instanceof Error ? error.message : 'Unable to open Cashfree checkout right now.',
+      );
     }
   };
 
@@ -977,7 +1016,7 @@ export default function PaymentsPage() {
                         value={paymentForm.student_id || ''}
                         onChange={(event) =>
                           selectStudentForPayment(
-                            event.target.value ? Number(event.target.value) : 0,
+                            event.target.value ? Number(event.target.value) : null,
                           )
                         }
                         disabled={paymentLoading}
@@ -1010,10 +1049,24 @@ export default function PaymentsPage() {
                               <p>Loading current coverage...</p>
                             ) : (
                               <>
-                                {selectedPendingSubmission && (
+                                {selectedPendingCashfreePayment && (
+                                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                                    A Cashfree request for this student is already pending from{' '}
+                                    {formatDateTime(
+                                      selectedPendingCashfreePayment.created_at ||
+                                        selectedPendingCashfreePayment.payment_date,
+                                    )}
+                                    . Use the Cashfree section below to continue that request.
+                                  </div>
+                                )}
+                                {selectedPendingManualPayment && (
                                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
                                     A payment for this student is already pending verification from{' '}
-                                    {formatDateTime(selectedPendingSubmission.created_at || selectedPendingSubmission.payment_date)}.
+                                    {formatDateTime(
+                                      selectedPendingManualPayment.created_at ||
+                                        selectedPendingManualPayment.payment_date,
+                                    )}
+                                    .
                                   </div>
                                 )}
                                 <p>
@@ -1093,10 +1146,45 @@ export default function PaymentsPage() {
                       disabled={paymentLoading}
                     />
 
+                    {hasSelectedPendingPayment && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                        {selectedPendingCashfreePayment
+                          ? 'This student already has a pending Cashfree request. Continue that flow below or wait for webhook confirmation before creating another payment.'
+                          : 'This student already has a pending manual payment submission. Confirm or resolve it before creating another payment.'}
+                      </div>
+                    )}
+
+                    <Button
+                      type="button"
+                      variant="primary"
+                      isLoading={paymentLoading}
+                      onClick={handleSubmitPayment}
+                      disabled={!selectedStudent || paymentLoading || hasSelectedPendingPayment}
+                      fullWidth
+                    >
+                      {selectedPendingCashfreePayment
+                        ? 'Cashfree Request Pending'
+                        : selectedPendingManualPayment
+                          ? 'Verification Pending'
+                          : 'Submit for Verification'}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleCreateCashfreeRequest}
+                      disabled={!selectedStudent || paymentLoading || hasSelectedPendingPayment}
+                      fullWidth
+                    >
+                      {hasSelectedPendingPayment
+                        ? 'Existing Payment Pending'
+                        : 'Create Cashfree Request'}
+                    </Button>
+
                     {(cashfreeRequest || selectedPendingCashfreePayment) && (
-                      <div className="rounded-3xl border border-sky-200 bg-linear-to-br from-sky-50 via-white to-cyan-50 p-5 text-sm text-sky-950 shadow-sm">
-                        <div className="flex flex-col gap-5 xl:flex-row">
-                          <div className="xl:w-[220px]">
+                      <div className="rounded-3xl border border-sky-200 bg-linear-to-br from-sky-50 via-white to-cyan-50 p-4 text-sm text-sky-950 shadow-sm sm:p-5">
+                        <div className="flex flex-col gap-5">
+                          <div className="w-full">
                             <div className="rounded-2xl border border-sky-200 bg-white p-4 shadow-sm">
                               <div className="mb-3 flex items-center gap-2 text-sky-900">
                                 <ScanLine className="h-4 w-4" />
@@ -1121,8 +1209,8 @@ export default function PaymentsPage() {
                                 </>
                               ) : (
                                 <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">
-                                  QR will appear here after Cashfree returns a hosted payment link.
-                                  In mock mode, keep this page open after creating the request.
+                                  Cashfree did not return a QR-friendly link for this order. Use the
+                                  hosted checkout button below with the payment session instead.
                                 </div>
                               )}
                             </div>
@@ -1142,7 +1230,7 @@ export default function PaymentsPage() {
                               </div>
                             </div>
 
-                            <div className="grid gap-3 md:grid-cols-2">
+                            <div className="grid grid-cols-1 gap-3">
                               <div className="rounded-2xl border border-sky-100 bg-white/80 p-3">
                                 <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
                                   Student
@@ -1222,23 +1310,34 @@ export default function PaymentsPage() {
                                 'This pending payment can later be confirmed by a real Cashfree webhook after you replace the dummy env values.'}
                             </p>
 
-                            <div className="flex flex-col gap-2 sm:flex-row">
+                            <div className="flex flex-col gap-2">
                               <Button
                                 type="button"
                                 variant="secondary"
                                 onClick={() => void handleCopyCashfreeScanValue()}
                                 disabled={!cashfreeShareValue}
-                                className="sm:flex-1"
+                                fullWidth
                               >
                                 <Copy className="h-4 w-4" />
                                 {cashfreePublicPaymentUrl ? 'Copy Secure Payment Link' : 'Copy Scan Link'}
                               </Button>
+                              {activeCashfreeSession?.payment_session_id && (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => void handleOpenCashfreeCheckout()}
+                                  fullWidth
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  Open Cashfree Checkout
+                                </Button>
+                              )}
                               {cashfreeCheckoutUrl && (
                                 <a
                                   href={cashfreeCheckoutUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-6 py-2.5 text-sm font-semibold text-sky-800 transition hover:border-sky-300 hover:bg-sky-50 sm:flex-1"
+                                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-6 py-2.5 text-sm font-semibold text-sky-800 transition hover:border-sky-300 hover:bg-sky-50"
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                   Open Hosted Checkout
@@ -1284,31 +1383,6 @@ export default function PaymentsPage() {
                         {paymentSuccess}
                       </div>
                     )}
-
-                    <Button
-                      type="button"
-                      variant="primary"
-                      isLoading={paymentLoading}
-                      onClick={handleSubmitPayment}
-                      disabled={!selectedStudent || paymentLoading || Boolean(selectedPendingSubmission)}
-                      fullWidth
-                    >
-                      {selectedPendingSubmission
-                        ? 'Verification Pending'
-                        : 'Submit for Verification'}
-                    </Button>
-
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={handleCreateCashfreeRequest}
-                      disabled={!selectedStudent || paymentLoading || Boolean(selectedPendingSubmission)}
-                      fullWidth
-                    >
-                      {selectedPendingSubmission
-                        ? 'Existing Request Pending'
-                        : 'Create Cashfree Request'}
-                    </Button>
                   </div>
                 </Card>
               </div>

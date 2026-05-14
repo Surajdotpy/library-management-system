@@ -285,6 +285,13 @@ export async function createCashfreePaymentRequest(req: AuthRequest, res: Respon
       return badRequest(res, error.message);
     }
 
+    if (process.env.NODE_ENV !== 'production' && typeof error.message === 'string' && error.message.trim()) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: 'Failed to create Cashfree payment request',

@@ -37,7 +37,100 @@ const CASHFREE_WEBHOOK_MAX_AGE_SECONDS = Number.parseInt(
   process.env.CASHFREE_WEBHOOK_MAX_AGE_SECONDS || '300',
   10,
 );
+const CASHFREE_MIN_ORDER_EXPIRY_MINUTES = 16;
+const CASHFREE_MAX_ORDER_EXPIRY_MINUTES = (30 * 24 * 60) - 1;
+const DEFAULT_CASHFREE_ORDER_EXPIRY_MINUTES = 20;
 const processedCashfreeWebhooks = new Map<string, number>();
+
+function buildCashfreeHeaders(
+  options: {
+    includeCredentials?: boolean;
+    includeContentType?: boolean;
+    requestId?: string;
+  } = {},
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'x-api-version': env.cashfreeApiVersion,
+  };
+
+  if (options.includeContentType) {
+    headers['content-type'] = 'application/json';
+  }
+
+  if (options.requestId) {
+    headers['x-request-id'] = options.requestId;
+  }
+
+  if (options.includeCredentials) {
+    headers['x-client-id'] = env.cashfreeAppId;
+    headers['x-client-secret'] = env.cashfreeSecretKey;
+  }
+
+  return headers;
+}
+
+function normalizeCashfreeCustomerPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+
+  if (digits.length === 10) {
+    return digits;
+  }
+
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits.slice(-10);
+  }
+
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.slice(-10);
+  }
+
+  throw new Error('Cashfree requires a 10-digit customer phone number');
+}
+
+function normalizeCashfreeCustomerId(customerId: string): string {
+  const normalizedId = customerId.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 50);
+
+  if (!normalizedId) {
+    throw new Error('Cashfree requires a valid customer ID');
+  }
+
+  return normalizedId;
+}
+
+function normalizeCashfreeOrderId(orderId: string): string {
+  const normalizedOrderId = orderId.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 50);
+
+  if (!normalizedOrderId) {
+    throw new Error('Cashfree requires a valid order ID');
+  }
+
+  return normalizedOrderId;
+}
+
+function isValidCashfreeEmail(email: string | null | undefined): email is string {
+  if (!email) {
+    return false;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function getCashfreeOrderExpiryMinutes(): number {
+  const configuredMinutes = Number.parseInt(
+    process.env.CASHFREE_ORDER_EXPIRY_MINUTES || `${DEFAULT_CASHFREE_ORDER_EXPIRY_MINUTES}`,
+    10,
+  );
+
+  if (!Number.isFinite(configuredMinutes)) {
+    return DEFAULT_CASHFREE_ORDER_EXPIRY_MINUTES;
+  }
+
+  return Math.min(
+    CASHFREE_MAX_ORDER_EXPIRY_MINUTES,
+    Math.max(CASHFREE_MIN_ORDER_EXPIRY_MINUTES, configuredMinutes),
+  );
+}
 
 function parseJsonRecord(responseText: string): Record<string, unknown> | null {
   try {
@@ -68,12 +161,42 @@ function getCashfreeErrorMessage(
   payload: Record<string, unknown> | null,
   fallback: string,
 ): string {
-  return (
+  const message =
     getNestedString(payload, 'message') ||
     getNestedString(payload, 'error', 'message') ||
     getNestedString(payload, 'error_description') ||
-    fallback
-  );
+    fallback;
+  const code =
+    getNestedString(payload, 'code') ||
+    getNestedString(payload, 'error_code') ||
+    getNestedString(payload, 'type');
+  const fieldMessage =
+    getNestedString(payload, 'error_details') ||
+    getNestedString(payload, 'field') ||
+    getNestedString(payload, 'error', 'field');
+
+  if (code && fieldMessage) {
+    return `${message} (${code}: ${fieldMessage})`;
+  }
+
+  if (code) {
+    return `${message} (${code})`;
+  }
+
+  return message;
+}
+
+function getNumericValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsedValue = Number.parseFloat(value.trim());
+    return Number.isFinite(parsedValue) ? parsedValue : null;
+  }
+
+  return null;
 }
 
 function extractCheckoutUrl(payload: Record<string, unknown> | null): string | null {
@@ -133,11 +256,14 @@ function getCashfreeWebhookFingerprint(
   timestamp: string | null | undefined,
   signature: string | null | undefined,
 ): string | null {
-  if (!timestamp || !signature) {
+  const normalizedTimestamp = timestamp?.trim();
+  const normalizedSignature = signature?.trim();
+
+  if (!normalizedTimestamp || !normalizedSignature) {
     return null;
   }
 
-  return `${timestamp}:${signature}`;
+  return `${normalizedTimestamp}:${normalizedSignature}`;
 }
 
 function cleanupProcessedCashfreeWebhooks(nowMs: number): void {
@@ -187,7 +313,7 @@ function isWebhookTimestampFresh(timestamp: string | null | undefined): boolean 
 }
 
 function buildMockCashfreeSession(input: CreateCashfreeOrderInput): CashfreePaymentSession {
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + getCashfreeOrderExpiryMinutes() * 60 * 1000);
   const amount = input.amount.toFixed(2);
   const upiIntent = `upi://pay?pa=demo@cashfree&pn=${encodeURIComponent(
     'Coffee aur Kitaab',
@@ -216,24 +342,36 @@ async function createCashfreeHostedUpiLink(
   checkoutUrl: string | null;
   upiIntent: string | null;
 }> {
-  const response = await fetch(`${getCashfreeApiBase(mode)}/orders/sessions`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-version': env.cashfreeApiVersion,
-      'x-client-device': 'desktop',
-      'x-client-os': 'windows',
-      'x-client-browser': 'chrome',
-    },
-    body: JSON.stringify({
-      payment_session_id: paymentSessionId,
-      payment_method: {
-        upi: {
-          channel: 'link',
-        },
+  let response: Response;
+
+  try {
+    response = await fetch(`${getCashfreeApiBase(mode)}/orders/sessions`, {
+      method: 'POST',
+      headers: {
+        ...buildCashfreeHeaders({
+          includeCredentials: true,
+          includeContentType: true,
+          requestId: paymentSessionId,
+        }),
+        'x-client-device': 'desktop',
+        'x-client-os': 'windows',
+        'x-client-browser': 'chrome',
       },
-    }),
-  });
+      body: JSON.stringify({
+        payment_session_id: paymentSessionId,
+        payment_method: {
+          upi: {
+            channel: 'link',
+          },
+        },
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown network error';
+    throw new Error(
+      `Cashfree hosted-link request failed. Check internet access, DNS/firewall rules, and sandbox credentials. ${message}`,
+    );
+  }
 
   const responseText = await response.text();
   const parsedResponse = parseJsonRecord(responseText);
@@ -263,34 +401,57 @@ export async function createCashfreePaymentSession(
   }
 
   if (!env.cashfreeAppId || !env.cashfreeSecretKey) {
-    throw new Error('Cashfree credentials are missing. Set CASHFREE_APP_ID and CASHFREE_SECRET_KEY');
+    throw new Error(
+      'Cashfree credentials are missing. Set CASHFREE_APP_ID/CASHFREE_CLIENT_ID and CASHFREE_SECRET_KEY/CASHFREE_CLIENT_SECRET',
+    );
   }
 
-  const orderExpiryTime = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const normalizedOrderId = normalizeCashfreeOrderId(input.orderId);
+  const normalizedCustomerId = normalizeCashfreeCustomerId(input.customerId);
+  const customerPhone = normalizeCashfreeCustomerPhone(input.customerPhone);
+  // Cashfree requires order_expiry_time to be strictly more than 15 minutes away.
+  const orderExpiryTime = new Date(
+    Date.now() + getCashfreeOrderExpiryMinutes() * 60 * 1000,
+  ).toISOString();
+  const customerDetails: Record<string, string> = {
+    customer_id: normalizedCustomerId,
+    customer_phone: customerPhone,
+  };
+
+  if (input.customerName.trim()) {
+    customerDetails.customer_name = input.customerName.trim().slice(0, 100);
+  }
+
+  if (isValidCashfreeEmail(input.customerEmail)) {
+    customerDetails.customer_email = input.customerEmail.trim();
+  }
+
   const requestBody = {
-    order_id: input.orderId,
+    order_id: normalizedOrderId,
     order_amount: Number(input.amount.toFixed(2)),
     order_currency: 'INR',
-    customer_details: {
-      customer_id: input.customerId,
-      customer_name: input.customerName,
-      customer_phone: input.customerPhone,
-      customer_email: input.customerEmail ?? `${input.customerId}@example.invalid`,
-    },
-    order_note: input.note,
+    customer_details: customerDetails,
     order_expiry_time: orderExpiryTime,
   };
 
-  const response = await fetch(`${getCashfreeApiBase(mode)}/orders`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-version': env.cashfreeApiVersion,
-      'x-client-id': env.cashfreeAppId,
-      'x-client-secret': env.cashfreeSecretKey,
-    },
-    body: JSON.stringify(requestBody),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${getCashfreeApiBase(mode)}/orders`, {
+      method: 'POST',
+      headers: buildCashfreeHeaders({
+        includeCredentials: true,
+        includeContentType: true,
+        requestId: normalizedOrderId,
+      }),
+      body: JSON.stringify(requestBody),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown network error';
+    throw new Error(
+      `Cashfree order creation request failed. Check internet access, DNS/firewall rules, and sandbox credentials. ${message}`,
+    );
+  }
 
   const responseText = await response.text();
   const parsedResponse = parseJsonRecord(responseText);
@@ -310,7 +471,23 @@ export async function createCashfreePaymentSession(
 
   const baseCheckoutUrl = extractCheckoutUrl(parsedResponse);
   const baseUpiIntent = extractUpiIntent(parsedResponse);
-  const hostedUpiLink = await createCashfreeHostedUpiLink(mode, paymentSessionId);
+  let hostedUpiLink = {
+    checkoutUrl: null as string | null,
+    upiIntent: null as string | null,
+  };
+  let hostedUpiLinkWarning: string | null = null;
+
+  try {
+    hostedUpiLink = await createCashfreeHostedUpiLink(mode, paymentSessionId);
+  } catch (error) {
+    hostedUpiLinkWarning =
+      error instanceof Error
+        ? error.message
+        : 'Cashfree could not create a hosted UPI payment link for this order';
+  }
+
+  const checkoutUrl = hostedUpiLink.checkoutUrl ?? baseCheckoutUrl;
+  const upiIntent = hostedUpiLink.upiIntent ?? baseUpiIntent;
 
   return {
     provider: 'cashfree',
@@ -319,13 +496,17 @@ export async function createCashfreePaymentSession(
     cf_order_id:
       typeof parsedResponse?.cf_order_id === 'string' ? parsedResponse.cf_order_id : null,
     payment_session_id: paymentSessionId,
-    checkout_url: hostedUpiLink.checkoutUrl ?? baseCheckoutUrl,
-    upi_intent: hostedUpiLink.upiIntent ?? baseUpiIntent,
+    checkout_url: checkoutUrl,
+    upi_intent: upiIntent,
     expires_at: orderExpiryTime ? new Date(orderExpiryTime) : null,
     order_status:
       typeof parsedResponse?.order_status === 'string' ? parsedResponse.order_status : 'ACTIVE',
     note:
-      'Cashfree live session created. Show the QR on the admin screen so the student can scan it with any UPI app.',
+      !checkoutUrl && !upiIntent
+        ? `Cashfree ${mode} order created successfully. No QR or direct hosted link came back, so continue with the payment session checkout flow from this session ID.`
+        : hostedUpiLinkWarning
+        ? `Cashfree ${mode} session created. The direct hosted-link step failed, so the app is using the fallback checkout payload returned by Cashfree.`
+        : `Cashfree ${mode} session created. Show the QR on the admin screen so the student can scan it with any UPI app.`,
   };
 }
 
@@ -335,18 +516,20 @@ export function verifyCashfreeWebhookSignature(
   signature: string | null | undefined,
 ): boolean {
   const signingSecret = getWebhookSigningSecret();
+  const normalizedTimestamp = timestamp?.trim();
+  const normalizedSignature = signature?.trim();
 
-  if (!signingSecret || !timestamp || !signature) {
+  if (!signingSecret || !normalizedTimestamp || !normalizedSignature) {
     return false;
   }
 
-  const signedPayload = `${timestamp}${rawPayload}`;
+  const signedPayload = `${normalizedTimestamp}${rawPayload}`;
   const expectedSignature = createHmac('sha256', signingSecret)
     .update(signedPayload)
     .digest('base64');
 
-  const providedBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expectedSignature);
+  const providedBuffer = Buffer.from(normalizedSignature, 'utf8');
+  const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
 
   if (providedBuffer.length !== expectedBuffer.length) {
     return false;
@@ -483,11 +666,8 @@ export function parseCashfreeSuccessfulPaymentWebhook(payload: unknown): {
     orderId,
     cfPaymentId: webhookPayload?.data?.payment?.cf_payment_id ?? null,
     amount:
-      typeof webhookPayload?.data?.payment?.payment_amount === 'number'
-        ? webhookPayload.data.payment.payment_amount
-        : typeof webhookPayload?.data?.order?.order_amount === 'number'
-          ? webhookPayload.data.order.order_amount
-          : null,
+      getNumericValue(webhookPayload?.data?.payment?.payment_amount) ??
+      getNumericValue(webhookPayload?.data?.order?.order_amount),
     paidAt: webhookPayload?.data?.payment?.payment_time,
   };
 }
