@@ -9,7 +9,10 @@ desktop.ini
 
 # Root dependency folders
 node_modules/
-
+node_modules
+dist
+.env
+.env.*
 # Backend local files
 backend/.env
 backend/.env.local
