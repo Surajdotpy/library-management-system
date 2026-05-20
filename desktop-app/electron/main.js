@@ -20,7 +20,7 @@ function getDevServerOrigin() {
 
 const DEV_SERVER_ORIGIN = getDevServerOrigin();
 
-autoUpdater.autoDownload = false;
+autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
 function getAuthSessionFilePath() {
