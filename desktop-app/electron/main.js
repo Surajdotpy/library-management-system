@@ -2,11 +2,23 @@ const { app, BrowserWindow, ipcMain, safeStorage, session, shell } = require('el
 const { autoUpdater } = require('electron-updater');
 const fs = require('fs');
 const path = require('path');
-const isDev = require('electron-is-dev');
 
 let mainWindow;
 let updateCheckInterval = null;
 const AUTH_SESSION_FILENAME = 'auth-session.json';
+const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://localhost:3000';
+const PRODUCTION_INDEX_PATH = path.resolve(__dirname, '../dist/index.html');
+const isDev = !app.isPackaged;
+
+function getDevServerOrigin() {
+  try {
+    return new URL(DEV_SERVER_URL).origin;
+  } catch {
+    return 'http://localhost:3000';
+  }
+}
+
+const DEV_SERVER_ORIGIN = getDevServerOrigin();
 
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -76,7 +88,7 @@ function isTrustedRendererSender(event) {
   const senderUrl = event.senderFrame?.url || event.sender?.getURL?.() || '';
 
   if (isDev) {
-    return senderUrl.startsWith('http://localhost:3000');
+    return senderUrl.startsWith(DEV_SERVER_ORIGIN);
   }
 
   return senderUrl.startsWith('file://');
@@ -205,11 +217,25 @@ function createWindow() {
     show: false,
   });
 
-  const startUrl = isDev
-    ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../dist/index.html')}`;
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) {
+      return;
+    }
 
-  mainWindow.loadURL(startUrl);
+    console.error(
+      `Main window failed to load (${errorCode}): ${errorDescription}. URL: ${validatedURL || 'unknown'}`
+    );
+  });
+
+  if (isDev) {
+    void mainWindow.loadURL(DEV_SERVER_URL);
+  } else {
+    if (!fs.existsSync(PRODUCTION_INDEX_PATH)) {
+      console.error(`Renderer entry file not found: ${PRODUCTION_INDEX_PATH}`);
+    }
+
+    void mainWindow.loadFile(PRODUCTION_INDEX_PATH);
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
