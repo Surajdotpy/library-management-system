@@ -27,6 +27,8 @@ If `VITE_SOCKET_URL` is not set, the app automatically derives the socket host f
 
 If you package the app for staff machines that connect to a hosted backend, set `VITE_API_BASE_URL` to that hosted API URL before running the production build.
 
+Important: Vite embeds `VITE_*` values at build time. After changing `.env`, run a fresh production build and reinstall the generated app, otherwise the installed Electron app keeps using the old API URL.
+
 ## Scripts
 
 ```bash
