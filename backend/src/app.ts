@@ -29,11 +29,17 @@ app.use(
     },
   }),
 );
-app.use(express.urlencoded({ extended: true, limit: API_BODY_LIMIT }));
-
 app.use((req: Request, res: Response, next: NextFunction) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path}`);
+  const startTime = Date.now();
+
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+
+    console.log(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`
+    );
+  });
+
   next();
 });
 
