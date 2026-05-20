@@ -1,11 +1,10 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { routes } from '@/config/routes';
 import { clearStoredSession, getStoredToken } from '@/lib/auth/session';
-
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+import { API_BASE_URL } from '@/lib/config/runtime';
 
 export const apiClient = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -47,7 +46,7 @@ apiClient.interceptors.response.use(
       if (status === 401) {
         console.error('Unauthorized request. Redirecting to login.');
         clearStoredSession();
-        window.location.assign(routes.login);
+        window.location.hash = routes.login;
       }
 
       if (status === 403) {

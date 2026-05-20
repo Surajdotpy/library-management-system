@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { routes } from '@/config/routes';
 import { getStoredUser } from '@/lib/auth/session';
 
@@ -51,7 +51,7 @@ function App() {
   const fallbackRoute = getStoredUser() ? routes.dashboard : routes.login;
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Suspense
         fallback={
           <div className="flex min-h-screen items-center justify-center bg-gray-50 text-gray-600">
@@ -84,7 +84,7 @@ function App() {
           <Route path="*" element={<Navigate to={fallbackRoute} replace />} />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

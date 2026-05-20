@@ -17,6 +17,14 @@ The most important variable is:
 VITE_API_BASE_URL=http://localhost:5000/api
 ```
 
+Optional:
+
+```bash
+VITE_SOCKET_URL=http://localhost:5000
+```
+
+If `VITE_SOCKET_URL` is not set, the app automatically derives the socket host from `VITE_API_BASE_URL`.
+
 If you package the app for staff machines that connect to a hosted backend, set `VITE_API_BASE_URL` to that hosted API URL before running the production build.
 
 ## Scripts

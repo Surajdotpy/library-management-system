@@ -1,12 +1,11 @@
 import { useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { API_BASE_URL } from '@/lib/config/runtime';
 import type { PublicPaymentDetails } from '@/types';
 import { openCashfreeCheckout } from '@/lib/payments/cashfree';
 
-const PUBLIC_PAYMENTS_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
-).replace(/\/+$/, '');
+const PUBLIC_PAYMENTS_BASE_URL = API_BASE_URL;
 
 export default function StudentPaymentPage() {
   const { accessToken } = useParams();

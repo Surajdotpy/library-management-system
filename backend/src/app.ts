@@ -1,6 +1,7 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import './config/load-env.ts';
+import { corsOptions } from './config/cors.ts';
 import authRoutes from './modules/auth/auth.routes.ts';
 import attendanceRoutes from './modules/attendance/attendance.routes.ts';
 import branchRoutes from './modules/branches/branches.routes.ts';
@@ -17,10 +18,7 @@ const app: Application = express();
 const API_BODY_LIMIT = process.env.API_BODY_LIMIT || '1mb';
 
 app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true,
-  }),
+  cors(corsOptions),
 );
 
 app.use(

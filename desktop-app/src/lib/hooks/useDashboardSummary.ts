@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { dashboardApi } from '@/lib/api/dashboard';
 import { getStoredToken } from '@/lib/auth/session';
+import { SOCKET_URL } from '@/lib/config/runtime';
 import type { DashboardSummary } from '@/types';
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
 export function useDashboardSummary(branchId?: number) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);

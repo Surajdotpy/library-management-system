@@ -1,5 +1,6 @@
 import './config/load-env.ts';
 import app from './app.ts';
+import { getAllowedOriginsSummary, socketCorsOptions } from './config/cors.ts';
 import pool from './config/db.ts';
 import type { Server as HttpServer } from 'http';
 import { createServer } from 'http';
@@ -39,10 +40,7 @@ async function startServer(): Promise<void> {
 
     // 🔥 Setup Socket.IO
     io = new SocketIOServer(server, {
-      cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-        credentials: true,
-      },
+      cors: socketCorsOptions,
     });
 
     io.use(async (socket, next) => {
@@ -118,6 +116,7 @@ async function startServer(): Promise<void> {
       console.log(`   URL: http://localhost:${PORT}`);
       console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`   Process ID: ${process.pid}`);
+      console.log(`   Allowed origins: ${getAllowedOriginsSummary().join(', ')}`);
       console.log('');
       console.log('📋 Available endpoints:');
       console.log(`   GET  http://localhost:${PORT}/`);
