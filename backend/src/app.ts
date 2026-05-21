@@ -56,7 +56,7 @@ app.get('/', (_req: Request, res: Response) => {
   res.status(200).json({
     success: true,
     message: 'Study Library Management System API',
-    version: '1.0.0',
+    version: '1.0.1',
     endpoints: {
       health: '/health',
       auth: '/api/auth/login',
