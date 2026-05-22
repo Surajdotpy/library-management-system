@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { BRANCH_OPTIONS, getBranchName } from '@/config/branches';
+import { INDIAN_STATE_OPTIONS } from '@/config/indianStates';
 import { Button, Input } from '@/components/ui';
 import { STUDY_PLANS, type Student, type UpdateStudentRequest, type User as AppUser } from '@/types';
 
@@ -327,6 +328,10 @@ export function EditStudentWizard({
 
   const selectedPlan = STUDY_PLANS.find((plan) => plan.value === formData.study_plan);
   const canSubmit = !loading;
+  const stateOptions = formData.state.trim()
+    && !INDIAN_STATE_OPTIONS.includes(formData.state.trim() as (typeof INDIAN_STATE_OPTIONS)[number])
+    ? [formData.state.trim(), ...INDIAN_STATE_OPTIONS]
+    : [...INDIAN_STATE_OPTIONS];
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -633,16 +638,32 @@ export function EditStudentWizard({
                         disabled={loading}
                       />
 
-                      <Input
-                        label="State"
-                        placeholder="Uttar Pradesh"
-                        value={formData.state}
-                        onChange={(event) => updateField('state', event.target.value)}
-                        error={fieldErrors.state}
-                        required
-                        fullWidth
-                        disabled={loading}
-                      />
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-gray-700">
+                          State <span className="ml-1 text-red-500">*</span>
+                        </label>
+                        <select
+                          value={formData.state}
+                          onChange={(event) => updateField('state', event.target.value)}
+                          disabled={loading}
+                          className={[
+                            'w-full rounded-xl border-2 px-4 py-3 text-gray-900 transition-all focus:outline-none focus:ring-4',
+                            fieldErrors.state
+                              ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                              : 'border-gray-200 focus:border-purple-500 focus:ring-purple-500/10',
+                          ].join(' ')}
+                        >
+                          <option value="">Select state</option>
+                          {stateOptions.map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                        </select>
+                        {fieldErrors.state && (
+                          <p className="mt-1.5 text-sm text-red-600">{fieldErrors.state}</p>
+                        )}
+                      </div>
 
                       <Input
                         label="PIN Code"

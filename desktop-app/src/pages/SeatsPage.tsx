@@ -214,7 +214,7 @@ export default function SeatsPage() {
   );
 
   const availableSeats = useMemo(
-    () => seats.filter((seat) => seat.availability_status === 'available' && seat.seat_status === 'active'),
+    () => seats.filter((seat) => seat.availability_status === 'available'),
     [seats],
   );
 
@@ -463,6 +463,11 @@ export default function SeatsPage() {
                         </option>
                       ))}
                     </select>
+                    {canManageAssignments && availableSeats.length === 0 && (
+                      <p className="mt-1.5 text-sm text-amber-700">
+                        No available seats found for the selected branch and month.
+                      </p>
+                    )}
                   </div>
 
                   <div>
