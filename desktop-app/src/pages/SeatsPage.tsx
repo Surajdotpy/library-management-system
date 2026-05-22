@@ -137,7 +137,7 @@ export default function SeatsPage() {
   });
 
   const effectiveBranchId = branchId === '' ? undefined : branchId;
-  const canManageAssignments = !isSuperAdmin || branchId !== '';
+  const isGlobalAssignmentMode = isSuperAdmin && branchId === '';
   const branchName = branchId === ''
     ? 'All Branches'
     : branches.find((branch) => branch.id === branchId)?.name ?? 'My Branch';
@@ -151,9 +151,7 @@ export default function SeatsPage() {
         branchesApi.getAll(),
         seatsApi.getAll({ month, year, branch_id: effectiveBranchId }),
         seatsApi.getBookings({ month, year, branch_id: effectiveBranchId, limit: 50 }),
-        canManageAssignments
-          ? seatsApi.getEligibleStudents({ month, year, branch_id: effectiveBranchId })
-          : Promise.resolve([]),
+        seatsApi.getEligibleStudents({ month, year, branch_id: effectiveBranchId }),
       ]);
 
       setBranches(branchData);
@@ -218,14 +216,49 @@ export default function SeatsPage() {
     [seats],
   );
 
+  const selectedSeat = useMemo(
+    () => availableSeats.find((seat) => seat.id === form.seat_id) ?? null,
+    [availableSeats, form.seat_id],
+  );
+
+  const assignableStudents = useMemo(() => {
+    if (!isGlobalAssignmentMode) {
+      return eligibleStudents;
+    }
+
+    if (!selectedSeat) {
+      return [];
+    }
+
+    return eligibleStudents.filter((student) => student.branch_id === selectedSeat.branch_id);
+  }, [eligibleStudents, isGlobalAssignmentMode, selectedSeat]);
+
+  const selectedStudent = useMemo(
+    () => eligibleStudents.find((student) => student.id === form.student_id) ?? null,
+    [eligibleStudents, form.student_id],
+  );
+
+  useEffect(() => {
+    if (
+      form.student_id &&
+      !assignableStudents.some((student) => student.id === form.student_id)
+    ) {
+      setForm((current) => ({ ...current, student_id: 0 }));
+    }
+  }, [assignableStudents, form.student_id]);
+
   async function handleCreateBooking() {
-    if (!canManageAssignments) {
-      setActionError('Select a branch first to create seat assignments.');
+    if (!form.seat_id || !form.student_id) {
+      setActionError('Select both a seat and a student.');
       return;
     }
 
-    if (!form.seat_id || !form.student_id) {
-      setActionError('Select both a seat and a student.');
+    if (
+      selectedSeat &&
+      selectedStudent &&
+      selectedSeat.branch_id !== selectedStudent.branch_id
+    ) {
+      setActionError('Select a student from the same branch as the selected seat.');
       return;
     }
 
@@ -436,9 +469,10 @@ export default function SeatsPage() {
                   </div>
                 </div>
 
-                {!canManageAssignments && (
-                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    Select a branch first to create seat assignments as superadmin.
+                {isGlobalAssignmentMode && (
+                  <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    All branches are in view. Pick a seat first and the student list will narrow to
+                    that branch automatically.
                   </div>
                 )}
 
@@ -453,7 +487,7 @@ export default function SeatsPage() {
                           seat_id: event.target.value ? Number(event.target.value) : 0,
                         }))
                       }
-                      disabled={!canManageAssignments || assigning}
+                      disabled={assigning || availableSeats.length === 0}
                       className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
                     >
                       <option value="">Select available seat</option>
@@ -463,9 +497,16 @@ export default function SeatsPage() {
                         </option>
                       ))}
                     </select>
-                    {canManageAssignments && availableSeats.length === 0 && (
+                    {availableSeats.length === 0 && (
                       <p className="mt-1.5 text-sm text-amber-700">
                         No available seats found for the selected branch and month.
+                      </p>
+                    )}
+                    {selectedSeat && (
+                      <p className="mt-1.5 text-sm text-blue-700">
+                        Selected seat branch:{' '}
+                        {branches.find((branch) => branch.id === selectedSeat.branch_id)?.name ??
+                          `Branch ${selectedSeat.branch_id}`}
                       </p>
                     )}
                   </div>
@@ -480,16 +521,38 @@ export default function SeatsPage() {
                           student_id: event.target.value ? Number(event.target.value) : 0,
                         }))
                       }
-                      disabled={!canManageAssignments || assigning}
+                      disabled={
+                        assigning ||
+                        assignableStudents.length === 0 ||
+                        (isGlobalAssignmentMode && !selectedSeat)
+                      }
                       className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
                     >
-                      <option value="">Select eligible student</option>
-                      {eligibleStudents.map((student) => (
+                      <option value="">
+                        {isGlobalAssignmentMode && !selectedSeat
+                          ? 'Select a seat first'
+                          : 'Select eligible student'}
+                      </option>
+                      {assignableStudents.map((student) => (
                         <option key={student.id} value={student.id}>
                           {student.name} ({student.student_id})
+                          {isGlobalAssignmentMode ? ` - ${student.branch_name}` : ''}
                         </option>
                       ))}
                     </select>
+                    {isGlobalAssignmentMode && !selectedSeat && (
+                      <p className="mt-1.5 text-sm text-blue-700">
+                        Choose a seat to see students from the same branch.
+                      </p>
+                    )}
+                    {selectedSeat && assignableStudents.length === 0 && (
+                      <p className="mt-1.5 text-sm text-amber-700">
+                        No eligible students are available for{' '}
+                        {branches.find((branch) => branch.id === selectedSeat.branch_id)?.name ??
+                          `Branch ${selectedSeat.branch_id}`}
+                        .
+                      </p>
+                    )}
                   </div>
 
                   <Input
@@ -499,7 +562,7 @@ export default function SeatsPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, notes: event.target.value }))
                     }
-                    disabled={!canManageAssignments || assigning}
+                    disabled={assigning}
                     fullWidth
                   />
 
@@ -519,7 +582,12 @@ export default function SeatsPage() {
                     type="button"
                     isLoading={assigning}
                     onClick={() => void handleCreateBooking()}
-                    disabled={!canManageAssignments || assigning}
+                    disabled={
+                      assigning ||
+                      !form.seat_id ||
+                      !form.student_id ||
+                      (isGlobalAssignmentMode && !selectedSeat)
+                    }
                     fullWidth
                   >
                     Create Seat Booking
