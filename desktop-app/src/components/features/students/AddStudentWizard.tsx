@@ -31,6 +31,9 @@ type FormValues = Omit<
   branch_id: SelectableBranchId;
   email: string;
   blood_group: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  emergency_contact_relation: string;
   id_proof_type: string;
   id_proof_number: string;
   notes: string;
@@ -59,7 +62,7 @@ function createInitialFormValues(
     pincode: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
-    emergency_contact_relation: 'Father',
+    emergency_contact_relation: '',
     id_proof_type: '',
     id_proof_number: '',
     notes: '',
@@ -167,16 +170,11 @@ function validateStep(
   }
 
   if (step === 3) {
-    if (!values.emergency_contact_name.trim()) {
-      errors.emergency_contact_name = 'Emergency contact name is required.';
-    }
-
-    if (!isFixedLengthNumeric(values.emergency_contact_phone, 10)) {
+    if (
+      values.emergency_contact_phone.trim()
+      && !isFixedLengthNumeric(values.emergency_contact_phone, 10)
+    ) {
       errors.emergency_contact_phone = 'Enter a valid 10-digit emergency phone number.';
-    }
-
-    if (!values.emergency_contact_relation.trim()) {
-      errors.emergency_contact_relation = 'Relationship is required.';
     }
 
     if (values.id_proof_number.trim()) {
@@ -202,6 +200,9 @@ function validateStep(
 function buildStudentPayload(values: FormValues, branchId: number): CreateStudentRequest {
   const email = values.email.trim();
   const bloodGroup = values.blood_group.trim();
+  const emergencyContactName = values.emergency_contact_name.trim();
+  const emergencyContactPhone = values.emergency_contact_phone.trim();
+  const emergencyContactRelation = values.emergency_contact_relation.trim();
   const idProofNumber = values.id_proof_number.trim();
   const notes = values.notes.trim();
 
@@ -218,9 +219,9 @@ function buildStudentPayload(values: FormValues, branchId: number): CreateStuden
     city: values.city.trim(),
     state: values.state.trim(),
     pincode: values.pincode,
-    emergency_contact_name: values.emergency_contact_name.trim(),
-    emergency_contact_phone: values.emergency_contact_phone,
-    emergency_contact_relation: values.emergency_contact_relation.trim(),
+    emergency_contact_name: emergencyContactName || undefined,
+    emergency_contact_phone: emergencyContactPhone || undefined,
+    emergency_contact_relation: emergencyContactRelation || undefined,
     id_proof_type: idProofNumber ? values.id_proof_type : undefined,
     id_proof_number: idProofNumber || undefined,
     notes: notes || undefined,
@@ -301,9 +302,11 @@ export function AddStudentWizard({
     setCurrentStep((previous) => Math.max(previous - 1, 1));
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+ const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+  };
 
+  const submitRegistration = async () => {
     if (!validateCurrentStep()) {
       return;
     }
@@ -352,6 +355,7 @@ export function AddStudentWizard({
   const selectedBranchId = resolveSelectedBranchId(formValues, branchId, userRole);
   const canSubmit = Boolean(selectedBranchId) && !loading;
   const showAdminBranchWarning = userRole === 'admin' && !branchId;
+  console.log("Rendering currentStep =", currentStep);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -655,7 +659,7 @@ export function AddStudentWizard({
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <Input
                         label="City"
-                        placeholder="Bareilly"
+                        placeholder="Almora"
                         value={formValues.city}
                         onChange={(event) => updateField('city', event.target.value)}
                         error={fieldErrors.city}
@@ -720,20 +724,19 @@ export function AddStudentWizard({
                     <h3 className="mb-6 text-xl font-bold text-gray-900">Emergency Contact</h3>
 
                     <Input
-                      label="Contact Person Name"
+                      label="Contact Person Name (Optional)"
                       placeholder="Emergency contact name"
                       value={formValues.emergency_contact_name}
                       onChange={(event) =>
                         updateField('emergency_contact_name', event.target.value)
                       }
                       error={fieldErrors.emergency_contact_name}
-                      required
                       fullWidth
                       disabled={loading}
                     />
 
                     <Input
-                      label="Contact Phone"
+                      label="Contact Phone (Optional)"
                       type="tel"
                       placeholder="9876543210"
                       value={formValues.emergency_contact_phone}
@@ -745,14 +748,13 @@ export function AddStudentWizard({
                       }
                       error={fieldErrors.emergency_contact_phone}
                       helperText="10-digit mobile number"
-                      required
                       fullWidth
                       disabled={loading}
                     />
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-gray-700">
-                        Relationship <span className="ml-1 text-red-500">*</span>
+                        Relationship (Optional)
                       </label>
                       <select
                         value={formValues.emergency_contact_relation}
@@ -762,6 +764,7 @@ export function AddStudentWizard({
                         disabled={loading}
                         className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-gray-900 transition-all focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
                       >
+                        <option value="">Select relationship</option>
                         {RELATIONSHIP_OPTIONS.map((option) => (
                           <option key={option} value={option}>
                             {option}
@@ -893,8 +896,9 @@ export function AddStudentWizard({
                 </Button>
               ) : (
                 <Button
-                  type="submit"
+                  type="button"
                   variant="primary"
+                  onClick={submitRegistration}
                   isLoading={loading}
                   disabled={!canSubmit}
                   className="flex items-center gap-2"

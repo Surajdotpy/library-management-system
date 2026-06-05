@@ -97,9 +97,9 @@ function createFormValuesFromStudent(student: Student): FormValues {
     city: student.city,
     state: student.state,
     pincode: student.pincode,
-    emergency_contact_name: student.emergency_contact_name,
-    emergency_contact_phone: student.emergency_contact_phone,
-    emergency_contact_relation: student.emergency_contact_relation,
+    emergency_contact_name: student.emergency_contact_name || '',
+    emergency_contact_phone: student.emergency_contact_phone || '',
+    emergency_contact_relation: student.emergency_contact_relation || '',
     id_proof_type: student.id_proof_type || '',
     id_proof_number: student.id_proof_number || '',
     notes: student.notes || '',
@@ -154,16 +154,11 @@ function validateStep(
   }
 
   if (step === 3) {
-    if (!values.emergency_contact_name.trim()) {
-      errors.emergency_contact_name = 'Emergency contact name is required.';
-    }
-
-    if (!isFixedLengthNumeric(values.emergency_contact_phone, 10)) {
+    if (
+      values.emergency_contact_phone.trim()
+      && !isFixedLengthNumeric(values.emergency_contact_phone, 10)
+    ) {
       errors.emergency_contact_phone = 'Enter a valid 10-digit emergency phone number.';
-    }
-
-    if (!values.emergency_contact_relation.trim()) {
-      errors.emergency_contact_relation = 'Relationship is required.';
     }
 
     if (values.id_proof_number.trim()) {
@@ -189,6 +184,9 @@ function validateStep(
 function buildUpdatePayload(values: FormValues): UpdateStudentRequest {
   const email = values.email.trim();
   const bloodGroup = values.blood_group.trim();
+  const emergencyContactName = values.emergency_contact_name.trim();
+  const emergencyContactPhone = values.emergency_contact_phone.trim();
+  const emergencyContactRelation = values.emergency_contact_relation.trim();
   const idProofNumber = values.id_proof_number.trim();
   const notes = values.notes.trim();
 
@@ -202,9 +200,9 @@ function buildUpdatePayload(values: FormValues): UpdateStudentRequest {
     city: values.city.trim(),
     state: values.state.trim(),
     pincode: values.pincode,
-    emergency_contact_name: values.emergency_contact_name.trim(),
-    emergency_contact_phone: values.emergency_contact_phone,
-    emergency_contact_relation: values.emergency_contact_relation.trim(),
+    emergency_contact_name: emergencyContactName || null,
+    emergency_contact_phone: emergencyContactPhone || null,
+    emergency_contact_relation: emergencyContactRelation || null,
   };
 
   if (email) payload.email = email;
@@ -694,20 +692,19 @@ export function EditStudentWizard({
                     <h3 className="mb-6 text-xl font-bold text-gray-900">Emergency Contact</h3>
 
                     <Input
-                      label="Contact Person Name"
+                      label="Contact Person Name (Optional)"
                       placeholder="Emergency contact name"
                       value={formData.emergency_contact_name}
                       onChange={(event) =>
                         updateField('emergency_contact_name', event.target.value)
                       }
                       error={fieldErrors.emergency_contact_name}
-                      required
                       fullWidth
                       disabled={loading}
                     />
 
                     <Input
-                      label="Contact Phone"
+                      label="Contact Phone (Optional)"
                       type="tel"
                       placeholder="9876543210"
                       value={formData.emergency_contact_phone}
@@ -719,14 +716,13 @@ export function EditStudentWizard({
                       }
                       error={fieldErrors.emergency_contact_phone}
                       helperText="10-digit mobile number"
-                      required
                       fullWidth
                       disabled={loading}
                     />
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-gray-700">
-                        Relationship <span className="ml-1 text-red-500">*</span>
+                        Relationship (Optional)
                       </label>
                       <select
                         value={formData.emergency_contact_relation}
@@ -736,6 +732,7 @@ export function EditStudentWizard({
                         disabled={loading}
                         className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-gray-900 transition-all focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
                       >
+                        <option value="">Select relationship</option>
                         {RELATIONSHIP_OPTIONS.map((option) => (
                           <option key={option} value={option}>
                             {option}

@@ -805,19 +805,19 @@ export default function StudentsPage() {
                       <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
                         <span className="font-medium text-gray-500">Contact Name</span>
                         <span className="text-right font-semibold text-gray-900">
-                          {studentToView.emergency_contact_name}
+                          {formatOptionalValue(studentToView.emergency_contact_name)}
                         </span>
                       </div>
                       <div className="flex justify-between gap-4 border-b border-gray-100 pb-3">
                         <span className="font-medium text-gray-500">Phone</span>
                         <span className="text-right font-semibold text-gray-900">
-                          {studentToView.emergency_contact_phone}
+                          {formatOptionalValue(studentToView.emergency_contact_phone)}
                         </span>
                       </div>
                       <div className="flex justify-between gap-4">
                         <span className="font-medium text-gray-500">Relation</span>
                         <span className="text-right font-semibold text-gray-900">
-                          {studentToView.emergency_contact_relation}
+                          {formatOptionalValue(studentToView.emergency_contact_relation)}
                         </span>
                       </div>
                     </div>

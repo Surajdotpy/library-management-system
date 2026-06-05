@@ -195,6 +195,12 @@ export async function updateStudent(
 ): Promise<Student | null> {
   let monthlyFee: number | undefined;
   let dailyHoursLimit: number | null | undefined;
+  const hasEmergencyContactName =
+    Object.prototype.hasOwnProperty.call(data, 'emergency_contact_name');
+  const hasEmergencyContactPhone =
+    Object.prototype.hasOwnProperty.call(data, 'emergency_contact_phone');
+  const hasEmergencyContactRelation =
+    Object.prototype.hasOwnProperty.call(data, 'emergency_contact_relation');
 
   if (data.study_plan) {
     const pricing = STUDY_PLAN_CONFIG[data.study_plan];
@@ -215,9 +221,18 @@ export async function updateStudent(
       city = COALESCE($8, city),
       state = COALESCE($9, state),
       pincode = COALESCE($10, pincode),
-      emergency_contact_name = COALESCE($11, emergency_contact_name),
-      emergency_contact_phone = COALESCE($12, emergency_contact_phone),
-      emergency_contact_relation = COALESCE($13, emergency_contact_relation),
+      emergency_contact_name = CASE
+        WHEN $24 THEN $11
+        ELSE emergency_contact_name
+      END,
+      emergency_contact_phone = CASE
+        WHEN $25 THEN $12
+        ELSE emergency_contact_phone
+      END,
+      emergency_contact_relation = CASE
+        WHEN $26 THEN $13
+        ELSE emergency_contact_relation
+      END,
       photo_url = COALESCE($14, photo_url),
       id_proof_type = COALESCE($15, id_proof_type),
       id_proof_number = COALESCE($16, id_proof_number),
@@ -254,6 +269,9 @@ export async function updateStudent(
     data.membership_status,
     data.notes,
     id,
+    hasEmergencyContactName,
+    hasEmergencyContactPhone,
+    hasEmergencyContactRelation,
   ];
 
   if (branchId != null) {

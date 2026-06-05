@@ -21,9 +21,9 @@ export interface Student {
   city: string;
   state: string;
   pincode: string;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
-  emergency_contact_relation: string;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relation: string | null;
   id_proof_type: string | null;
   id_proof_number: string | null;
   notes: string | null;
@@ -48,9 +48,9 @@ export interface CreateStudentRequest {
   city: string;
   state: string;
   pincode: string;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
-  emergency_contact_relation: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relation?: string;
   id_proof_type?: string;
   id_proof_number?: string;
   notes?: string;
@@ -70,9 +70,9 @@ export interface UpdateStudentRequest {
   city?: string;
   state?: string;
   pincode?: string;
-  emergency_contact_name?: string;
-  emergency_contact_phone?: string;
-  emergency_contact_relation?: string;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
   id_proof_type?: string;
   id_proof_number?: string;
   notes?: string;

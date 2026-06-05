@@ -1,6 +1,6 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../auth/auth.types.ts';
-import type { CreateStudentDTO } from './students.types.ts';
+import type { CreateStudentDTO, UpdateStudentDTO } from './students.types.ts';
 import { STUDY_PLAN_VALUES } from './study-plans.ts';
 import * as studentService from './students.service.ts';
 import {
@@ -54,6 +54,10 @@ function parseLimit(value: unknown): number | undefined {
 
   const parsedValue = Number.parseInt(value, 10);
   return Number.isNaN(parsedValue) ? Number.NaN : parsedValue;
+}
+
+function hasOwnField(object: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
 }
 
 // GET /api/students - Get all students
@@ -178,6 +182,12 @@ export async function createStudent(req: AuthRequest, res: Response) {
     const requestedBranchId =
       typeof branch_id === 'string' ? Number.parseInt(branch_id, 10) : branch_id;
     const normalizedEmail = email?.trim();
+    const normalizedEmergencyContactName =
+      typeof emergency_contact_name === 'string' ? emergency_contact_name.trim() : '';
+    const normalizedEmergencyContactPhone =
+      typeof emergency_contact_phone === 'string' ? emergency_contact_phone.trim() : '';
+    const normalizedEmergencyContactRelation =
+      typeof emergency_contact_relation === 'string' ? emergency_contact_relation.trim() : '';
 
     if (!name?.trim()) {
       return badRequest(res, 'Name is required');
@@ -194,6 +204,11 @@ export async function createStudent(req: AuthRequest, res: Response) {
     if (!study_plan) {
       return badRequest(res, 'Study plan is required');
     }
+
+    console.log('Received study_plan:', study_plan);
+console.log('Available plans:', STUDY_PLAN_VALUES);
+console.log('Valid plans set:', [...VALID_STUDY_PLANS]);
+console.log('Has plan?', VALID_STUDY_PLANS.has(study_plan));
 
     if (!VALID_STUDY_PLANS.has(study_plan)) {
       return badRequest(res, 'Invalid study plan');
@@ -247,19 +262,11 @@ export async function createStudent(req: AuthRequest, res: Response) {
       return badRequest(res, 'Valid 6-digit PIN code is required');
     }
 
-    if (!emergency_contact_name?.trim()) {
-      return badRequest(res, 'Emergency contact name is required');
-    }
-
     if (
-      !emergency_contact_phone?.trim() ||
-      !/^\d{10}$/.test(emergency_contact_phone.trim())
+      normalizedEmergencyContactPhone
+      && !/^\d{10}$/.test(normalizedEmergencyContactPhone)
     ) {
-      return badRequest(res, 'Valid emergency phone is required');
-    }
-
-    if (!emergency_contact_relation?.trim()) {
-      return badRequest(res, 'Relationship is required');
+      return badRequest(res, 'Emergency phone must be 10 digits when provided');
     }
 
     if (normalizedEmail && !EMAIL_PATTERN.test(normalizedEmail)) {
@@ -279,9 +286,9 @@ export async function createStudent(req: AuthRequest, res: Response) {
       city: city.trim(),
       state: state.trim(),
       pincode: pincode.trim(),
-      emergency_contact_name: emergency_contact_name.trim(),
-      emergency_contact_phone: emergency_contact_phone.trim(),
-      emergency_contact_relation: emergency_contact_relation.trim(),
+      emergency_contact_name: normalizedEmergencyContactName || null,
+      emergency_contact_phone: normalizedEmergencyContactPhone || null,
+      emergency_contact_relation: normalizedEmergencyContactRelation || null,
       id_proof_type: id_proof_type?.trim() || null,
       id_proof_number: id_proof_number?.trim() || null,
     });
@@ -311,7 +318,7 @@ export async function createStudent(req: AuthRequest, res: Response) {
 export async function updateStudent(req: AuthRequest, res: Response) {
   try {
     const id = Number.parseInt(req.params.id as string, 10);
-    const updateData = req.body;
+    const updateData = { ...req.body } as Record<string, unknown>;
 
     if (Number.isNaN(id)) {
       return badRequest(res, 'Invalid student ID');
@@ -322,17 +329,63 @@ export async function updateStudent(req: AuthRequest, res: Response) {
     }
 
     if (
-      updateData.study_plan != null
-      && !VALID_STUDY_PLANS.has(updateData.study_plan)
+      hasOwnField(updateData, 'study_plan')
+      && updateData.study_plan != null
+      && (
+        typeof updateData.study_plan !== 'string'
+        || !VALID_STUDY_PLANS.has(updateData.study_plan)
+      )
     ) {
       return badRequest(res, 'Invalid study plan');
+    }
+
+    if (hasOwnField(updateData, 'emergency_contact_name')) {
+      const value = updateData.emergency_contact_name;
+
+      if (value != null && typeof value !== 'string') {
+        return badRequest(res, 'Emergency contact name must be text');
+      }
+
+      updateData.emergency_contact_name =
+        typeof value === 'string' && value.trim() !== ''
+          ? value.trim()
+          : null;
+    }
+
+    if (hasOwnField(updateData, 'emergency_contact_phone')) {
+      const value = updateData.emergency_contact_phone;
+
+      if (value != null && typeof value !== 'string') {
+        return badRequest(res, 'Emergency contact phone must be text');
+      }
+
+      const normalizedValue = typeof value === 'string' ? value.trim() : '';
+
+      if (normalizedValue && !/^\d{10}$/.test(normalizedValue)) {
+        return badRequest(res, 'Emergency phone must be 10 digits when provided');
+      }
+
+      updateData.emergency_contact_phone = normalizedValue || null;
+    }
+
+    if (hasOwnField(updateData, 'emergency_contact_relation')) {
+      const value = updateData.emergency_contact_relation;
+
+      if (value != null && typeof value !== 'string') {
+        return badRequest(res, 'Emergency contact relation must be text');
+      }
+
+      updateData.emergency_contact_relation =
+        typeof value === 'string' && value.trim() !== ''
+          ? value.trim()
+          : null;
     }
 
     const user = requireAuthenticatedUser(req.user);
     const branchId = resolveAuthorizedBranchId(user);
     const updatedStudent = await studentService.updateStudent(
       id,
-      updateData,
+      updateData as UpdateStudentDTO,
       branchId,
     );
 

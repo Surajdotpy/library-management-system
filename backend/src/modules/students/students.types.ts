@@ -13,9 +13,9 @@ export interface Student {
   city: string;
   state: string;
   pincode: string;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
-  emergency_contact_relation: string;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
   photo_url?: string;
   id_proof_type?: string;
   id_proof_number?: string;
@@ -44,9 +44,9 @@ export interface CreateStudentDTO {
   city: string;
   state: string;
   pincode: string;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
-  emergency_contact_relation: string;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
   photo_url?: string;
   id_proof_type?: string | null;
   id_proof_number?: string | null;
@@ -67,9 +67,9 @@ export interface UpdateStudentDTO {
   city?: string;
   state?: string;
   pincode?: string;
-  emergency_contact_name?: string;
-  emergency_contact_phone?: string;
-  emergency_contact_relation?: string;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
   photo_url?: string;
   id_proof_type?: string;
   id_proof_number?: string;

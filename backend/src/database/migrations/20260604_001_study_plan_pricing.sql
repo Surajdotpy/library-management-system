@@ -1,3 +1,9 @@
+ALTER TABLE students
+  DROP CONSTRAINT IF EXISTS check_plan_fee;
+
+ALTER TABLE students
+  DROP CONSTRAINT IF EXISTS students_study_plan_check;
+
 UPDATE students
 SET
   daily_hours_limit = CASE
@@ -15,12 +21,6 @@ SET
     ELSE monthly_fee
   END
 WHERE study_plan IN ('1_hour', '2_hours', '4_hours', 'unlimited');
-
-ALTER TABLE students
-  DROP CONSTRAINT IF EXISTS check_plan_fee;
-
-ALTER TABLE students
-  DROP CONSTRAINT IF EXISTS students_study_plan_check;
 
 ALTER TABLE students
   ADD CONSTRAINT students_study_plan_check
