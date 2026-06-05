@@ -1,3 +1,5 @@
+import type { StudyPlan } from '../students/study-plans.ts';
+
 // Attendance record from database
 export interface Attendance {
   id: number;
@@ -34,7 +36,7 @@ export interface AttendanceWithStudent {
   student_code: string;
   branch_id: number;
   branch_name: string;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   attendance_date: Date;
   entry_time: Date | null;
   exit_time: Date | null;

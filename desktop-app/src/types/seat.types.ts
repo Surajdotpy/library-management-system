@@ -1,3 +1,5 @@
+import type { StudyPlan } from './student.types';
+
 export type SeatSection = 'general' | 'ac' | 'non_ac' | 'silent_zone';
 export type SeatLifecycleStatus = 'active' | 'maintenance' | 'inactive';
 export type SeatAvailabilityStatus = 'available' | 'booked' | 'maintenance' | 'inactive';
@@ -37,7 +39,7 @@ export interface SeatEligibleStudent {
   name: string;
   branch_id: number;
   branch_name: string;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   monthly_fee: number;
 }
 

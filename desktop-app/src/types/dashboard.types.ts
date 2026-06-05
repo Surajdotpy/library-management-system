@@ -1,3 +1,5 @@
+import type { StudyPlan } from './student.types';
+
 export interface DashboardBranchInfo {
   id: number;
   name: string;
@@ -46,7 +48,7 @@ export interface DashboardStudentInside {
   student_code: string;
   branch_id: number;
   branch_name: string;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   current_duration_minutes: number;
   allowed_minutes: number | null;
   remaining_minutes: number | null;

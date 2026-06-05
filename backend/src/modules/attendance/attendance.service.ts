@@ -175,9 +175,8 @@ export async function getTodayAttendance(
           )::int
         END as current_duration_minutes,
         CASE
-          WHEN s.study_plan = '2_hours' THEN 120
-          WHEN s.study_plan = '4_hours' THEN 240
-          ELSE NULL
+          WHEN s.daily_hours_limit IS NULL THEN NULL
+          ELSE s.daily_hours_limit * 60
         END as allowed_minutes,
         a.status,
         a.notes

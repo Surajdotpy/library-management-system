@@ -1,3 +1,5 @@
+import type { StudyPlan } from './student.types';
+
 export interface Attendance {
   id: number;
   student_id: number;
@@ -30,7 +32,7 @@ export interface TodayAttendanceStudent {
   student_code: string;
   branch_id: number;
   branch_name: string;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   attendance_date: string;
   entry_time: string | null;
   exit_time: string | null;

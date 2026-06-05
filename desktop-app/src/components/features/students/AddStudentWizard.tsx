@@ -49,7 +49,7 @@ function createInitialFormValues(
     name: '',
     phone: '',
     email: '',
-    study_plan: '2_hours',
+    study_plan: '1_hour',
     date_of_birth: '',
     gender: 'male',
     blood_group: '',

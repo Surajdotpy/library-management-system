@@ -549,9 +549,11 @@ export default function StudentsPage() {
                 className="rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="all">All Plans</option>
-                <option value="2_hours">2 Hours</option>
-                <option value="4_hours">4 Hours</option>
-                <option value="unlimited">Unlimited</option>
+                {STUDY_PLANS.map((plan) => (
+                  <option key={plan.value} value={plan.value}>
+                    {plan.label}
+                  </option>
+                ))}
               </select>
 
               <select

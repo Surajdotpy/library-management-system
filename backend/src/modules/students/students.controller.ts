@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../auth/auth.types.ts';
 import type { CreateStudentDTO } from './students.types.ts';
+import { STUDY_PLAN_VALUES } from './study-plans.ts';
 import * as studentService from './students.service.ts';
 import {
   isAuthorizationError,
@@ -8,7 +9,7 @@ import {
   resolveAuthorizedBranchId,
 } from '../auth/auth.authorization.ts';
 
-const VALID_STUDY_PLANS = new Set(['2_hours', '4_hours', 'unlimited']);
+const VALID_STUDY_PLANS = new Set<string>(STUDY_PLAN_VALUES);
 const VALID_GENDERS = new Set(['male', 'female', 'other']);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -318,6 +319,13 @@ export async function updateStudent(req: AuthRequest, res: Response) {
 
     if (Object.keys(updateData).length === 0) {
       return badRequest(res, 'No fields to update');
+    }
+
+    if (
+      updateData.study_plan != null
+      && !VALID_STUDY_PLANS.has(updateData.study_plan)
+    ) {
+      return badRequest(res, 'Invalid study plan');
     }
 
     const user = requireAuthenticatedUser(req.user);

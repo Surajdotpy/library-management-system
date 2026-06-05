@@ -1,14 +1,7 @@
 import type { PoolClient } from 'pg';
 import pool from '../../config/db.ts';
 import type { Student, CreateStudentDTO, UpdateStudentDTO } from './students.types.ts';
-
-// ========== PRICING CONFIGURATION ==========
-// Update prices here - changes automatically apply everywhere
-const PRICING = {
-  '2_hours': { fee: 250, limit: 2 },
-  '4_hours': { fee: 350, limit: 4 },
-  unlimited: { fee: 400, limit: null },
-} as const;
+import { STUDY_PLAN_CONFIG } from './study-plans.ts';
 
 function parseStudentSequence(studentId: string | undefined): number {
   if (!studentId) {
@@ -119,8 +112,9 @@ export async function getStudentById(
 
 // Create new student
 export async function createStudent(data: CreateStudentDTO): Promise<Student> {
-  const pricing = PRICING[data.study_plan];
+  const pricing = STUDY_PLAN_CONFIG[data.study_plan];
   const fee = pricing.fee;
+  const dailyHoursLimit = pricing.dailyHoursLimit;
   const client = await pool.connect();
 
   try {
@@ -142,7 +136,7 @@ export async function createStudent(data: CreateStudentDTO): Promise<Student> {
         address, city, state, pincode,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relation,
         id_proof_type, id_proof_number,
-        branch_id, study_plan,
+        branch_id, study_plan, daily_hours_limit,
         registration_date, membership_status, monthly_fee, is_active
       ) VALUES (
         $1, $2, $3, $4,
@@ -150,8 +144,8 @@ export async function createStudent(data: CreateStudentDTO): Promise<Student> {
         $8, $9, $10, $11,
         $12, $13, $14,
         $15, $16,
-        $17, $18,
-        CURRENT_DATE, 'active', $19, true
+        $17, $18, $19,
+        CURRENT_DATE, 'active', $20, true
       ) RETURNING *`,
       [
         studentId,
@@ -172,6 +166,7 @@ export async function createStudent(data: CreateStudentDTO): Promise<Student> {
         data.id_proof_number ?? null,
         data.branch_id,
         data.study_plan,
+        dailyHoursLimit,
         fee,
       ],
     );
@@ -202,9 +197,9 @@ export async function updateStudent(
   let dailyHoursLimit: number | null | undefined;
 
   if (data.study_plan) {
-    const pricing = PRICING[data.study_plan];
+    const pricing = STUDY_PLAN_CONFIG[data.study_plan];
     monthlyFee = pricing.fee;
-    dailyHoursLimit = pricing.limit;
+    dailyHoursLimit = pricing.dailyHoursLimit;
   }
 
   let query = `

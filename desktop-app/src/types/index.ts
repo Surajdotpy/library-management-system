@@ -17,6 +17,7 @@ export type {
   CreateStudentRequest,
   UpdateStudentRequest,
   StudentWithDetails,
+  StudyPlan,
   StudyPlanOption,
 } from './student.types';
 

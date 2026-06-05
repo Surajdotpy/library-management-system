@@ -12,6 +12,10 @@ Current repo status as of March 30, 2026:
 - `desktop-app/` - Electron desktop client built with React + Vite
 - `docs/` - setup and reference notes
 
+Helpful docs:
+
+- `docs/STUDENT_PLAN_AND_FORM_GUIDE.md` - step-by-step guide for changing study plans, student form fields, and database rules
+
 ## Backend Setup
 
 1. Copy `backend/.env.example` to `backend/.env`.

@@ -1,3 +1,5 @@
+export type StudyPlan = '1_hour' | '2_hours' | '4_hours' | 'unlimited';
+
 /**
  * Student Types
  */
@@ -11,7 +13,7 @@ export interface Student {
   email: string | null;
   branch_id: number;
   branch_name?: string;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   date_of_birth: string;
   gender: 'male' | 'female' | 'other';
   blood_group: string | null;
@@ -38,7 +40,7 @@ export interface CreateStudentRequest {
   phone: string;
   email?: string;
   branch_id: number;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   date_of_birth: string;
   gender: 'male' | 'female' | 'other';
   blood_group?: string;
@@ -60,7 +62,7 @@ export interface UpdateStudentRequest {
   phone?: string;
   email?: string;
   branch_id?: number;
-  study_plan?: '2_hours' | '4_hours' | 'unlimited';
+  study_plan?: StudyPlan;
   date_of_birth?: string;
   gender?: 'male' | 'female' | 'other';
   blood_group?: string;
@@ -88,7 +90,7 @@ export interface StudentWithDetails extends Student {
 
 // Study plan option
 export interface StudyPlanOption {
-  value: '2_hours' | '4_hours' | 'unlimited';
+  value: StudyPlan;
   label: string;
   fee: number;
   description: string;
@@ -96,6 +98,12 @@ export interface StudyPlanOption {
 
 // Study plan options constant
 export const STUDY_PLANS: StudyPlanOption[] = [
+  {
+    value: '1_hour',
+    label: '1 Hour Plan',
+    fee: 100,
+    description: 'Study for 1 hour daily',
+  },
   {
     value: '2_hours',
     label: '2 Hours Plan',
@@ -105,13 +113,13 @@ export const STUDY_PLANS: StudyPlanOption[] = [
   {
     value: '4_hours',
     label: '4 Hours Plan',
-    fee: 350,
+    fee: 400,
     description: 'Study for 4 hours daily',
   },
   {
     value: 'unlimited',
     label: 'Unlimited Plan',
-    fee: 400,
+    fee: 600,
     description: 'Study all day',
   },
 ];

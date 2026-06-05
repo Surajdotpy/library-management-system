@@ -1,3 +1,5 @@
+import type { StudyPlan } from './study-plans.ts';
+
 export interface Student {
   id: number;
   student_id: string;
@@ -20,7 +22,7 @@ export interface Student {
   id_proof_url?: string;
   branch_id: number;
   assigned_seat_id?: number;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   daily_hours_limit?: number;
   registration_date: Date;
   membership_status: 'active' | 'inactive' | 'suspended' | 'expired';
@@ -50,7 +52,7 @@ export interface CreateStudentDTO {
   id_proof_number?: string | null;
   id_proof_url?: string;
   branch_id: number;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: StudyPlan;
   notes?: string | null;
 }
 
@@ -72,7 +74,7 @@ export interface UpdateStudentDTO {
   id_proof_type?: string;
   id_proof_number?: string;
   id_proof_url?: string;
-  study_plan?: '2_hours' | '4_hours' | 'unlimited';
+  study_plan?: StudyPlan;
   membership_status?: 'active' | 'inactive' | 'suspended' | 'expired';
   notes?: string;
 }

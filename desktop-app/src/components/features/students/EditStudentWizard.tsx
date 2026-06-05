@@ -28,7 +28,7 @@ type FormValues = {
   name: string;
   phone: string;
   email: string;
-  study_plan: '2_hours' | '4_hours' | 'unlimited';
+  study_plan: Student['study_plan'];
   date_of_birth: string;
   gender: 'male' | 'female' | 'other';
   blood_group: string;
