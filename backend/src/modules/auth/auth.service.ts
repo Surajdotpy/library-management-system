@@ -37,7 +37,7 @@ export async function findUserById(userId: number): Promise<User | null> {
   const query = `
     SELECT *
     FROM users
-    WHERE id = $1
+    WHERE id = $1 AND is_active = true
     LIMIT 1
   `;
 
