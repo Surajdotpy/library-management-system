@@ -28,4 +28,6 @@ export const env = {
     cashfreeSecretKey: readEnvString("CASHFREE_SECRET_KEY", "CASHFREE_CLIENT_SECRET"),
     cashfreeWebhookSecret: readEnvString("CASHFREE_WEBHOOK_SECRET"),
     cashfreeApiVersion: readEnvString("CASHFREE_API_VERSION") || "2023-08-01",
+    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || "",
+    telegramAdminChatIds: process.env.TELEGRAM_ADMIN_CHAT_IDS || "",
 };

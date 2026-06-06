@@ -6,6 +6,7 @@ import type { Server as HttpServer } from 'http';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { findUserById, verifyToken } from './modules/auth/auth.service.ts';
+import { startTelegramBot, stopTelegramBot } from './modules/telegram/telegram-bot.service.ts';
 
 const PORT: number = parseInt(process.env.PORT || '5000', 10);
 
@@ -118,6 +119,9 @@ async function startServer(): Promise<void> {
       console.log(`   Process ID: ${process.pid}`);
       console.log(`   Allowed origins: ${getAllowedOriginsSummary().join(', ')}`);
       console.log('');
+
+      startTelegramBot();
+
       console.log('📋 Available endpoints:');
       console.log(`   GET  http://localhost:${PORT}/`);
       console.log(`   GET  http://localhost:${PORT}/health`);
@@ -132,6 +136,8 @@ async function startServer(): Promise<void> {
 // Graceful shutdown
 async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n⚠️  ${signal} received, starting graceful shutdown...`);
+
+  stopTelegramBot();
 
   if (server) {
     server.close(async () => {
