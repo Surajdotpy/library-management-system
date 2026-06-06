@@ -1,5 +1,6 @@
 import { Telegraf, type Context } from 'telegraf';
 import pool from '../../config/db.ts';
+import { sendReceiptEmail } from '../email/email.service.ts';
 import type { TelegramSummary, PendingPaymentInfo, SeatInfo, AlertInfo, BranchInfo, TodayInfo, StudentSearchResult, RevenueInfo, NotificationItem, BookingInfo, DefaulterInfo } from './telegram-bot.types.ts';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
@@ -665,7 +666,7 @@ export async function startTelegramBot(): Promise<void> {
 
             const payInfo = await pool.query(`
               SELECT fp.amount, fp.receipt_number, TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
-                     s.name AS student_name, s.phone, b.name AS branch_name
+                     s.name AS student_name, s.phone, s.email, b.name AS branch_name
               FROM fee_payments fp
               JOIN students s ON s.id = fp.student_id
               JOIN branches b ON b.id = s.branch_id
@@ -690,6 +691,20 @@ export async function startTelegramBot(): Promise<void> {
                 JOIN students s ON s.id = fp.student_id
                 WHERE fp.id = $1
               `, [paymentId, p.phone, receiptMsg]);
+
+              if (p.email) {
+                const emailResult = await sendReceiptEmail(
+                  p.email,
+                  p.student_name,
+                  p.receipt_number ?? `RCP-${String(paymentId).padStart(6, '0')}`,
+                  Number(p.amount),
+                  p.payment_date,
+                  p.branch_name,
+                );
+                if (!emailResult.sent) {
+                  console.error('Receipt email failed:', emailResult.error);
+                }
+              }
             }
           } else {
             await pool.query(
