@@ -1,3 +1,4 @@
+import { Telegraf, type Context } from 'telegraf';
 import pool from '../../config/db.ts';
 import type { TelegramSummary, PendingPaymentInfo, SeatInfo, AlertInfo, BranchInfo, TodayInfo, StudentSearchResult, RevenueInfo, NotificationItem, BookingInfo, DefaulterInfo } from './telegram-bot.types.ts';
 
@@ -455,11 +456,11 @@ async function respond(chatId: number | string, text: string, extra: Record<stri
     return;
   }
   try {
-    await bot.sendMessage(chatId, text, { parse_mode: 'HTML', ...extra });
+    await bot.telegram.sendMessage(Number(chatId), text, { parse_mode: 'HTML', ...extra });
   } catch (error: any) {
     console.error('Telegram sendMessage error:', error?.message ?? error);
     try {
-      await bot.sendMessage(chatId, text, extra);
+      await bot.telegram.sendMessage(Number(chatId), text, extra);
     } catch (e2: any) {
       console.error('Telegram sendMessage fallback also failed:', e2?.message ?? e2);
     }
@@ -611,17 +612,26 @@ export async function startTelegramBot(): Promise<void> {
   }
 
   try {
-    const mod = await import('node-telegram-bot-api');
-    const TelegramBot = mod.default ?? mod;
-    bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+    bot = new Telegraf(TELEGRAM_BOT_TOKEN);
 
-    bot.on('message', async (msg: any) => {
+    bot.catch((err: any) => {
+      const msg = err?.message ?? String(err);
+      if (msg.includes('404')) {
+        console.error('TELEGRAM_BOT_TOKEN is invalid — bot disabled');
+        stopTelegramBot();
+      } else if (!msg.includes('ECONNRESET') && !msg.includes('ETIMEDOUT') && !msg.includes('socket hang up')) {
+        console.error('Telegraf error:', msg);
+      }
+    });
+
+    bot.on('text', async (ctx: Context) => {
       try {
-        const chatId = msg.chat?.id;
-        const text = msg.text ?? '';
+        const chatId = ctx.chat?.id;
+        if (!ctx.message || !('text' in ctx.message)) return;
+        const text = ctx.message.text;
         if (!chatId || !text.startsWith('/')) return;
         if (!isAuthorized(chatId)) {
-          await respond(chatId, 'Unauthorized');
+          await ctx.reply('Unauthorized');
           return;
         }
         if (!checkRateLimit(String(chatId))) {
@@ -633,32 +643,23 @@ export async function startTelegramBot(): Promise<void> {
       }
     });
 
-    bot.on('callback_query', async (query: any) => {
+    bot.on('callback_query', async (ctx: Context) => {
       try {
-        const chatId = query.message?.chat?.id;
-        const data = query.data ?? '';
+        const chatId = ctx.chat?.id;
+        if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
+        const data = ctx.callbackQuery.data;
         if (!chatId || !data) return;
         if (!isAuthorized(chatId)) return;
-        await bot.answerCallbackQuery(query.id);
+        await ctx.answerCbQuery();
         await handleCommand(chatId, `/${data}`);
       } catch (error: any) {
         console.error('Callback query error:', error?.message ?? error);
       }
     });
 
-    bot.on('polling_error', (error: any) => {
-      const msg = error?.message ?? String(error);
-      if (msg.includes('404')) {
-        console.error('TELEGRAM_BOT_TOKEN is invalid — bot disabled');
-        stopTelegramBot();
-      } else if (!msg.includes('ECONNRESET') && !msg.includes('ETIMEDOUT')) {
-        console.error('Telegram polling error:', msg);
-      }
-    });
-
-    // Set command menu so users see available commands
+    // Set command menu
     try {
-      await bot.setMyCommands([
+      await bot.telegram.setMyCommands([
         { command: 'summary', description: 'Daily overview' },
         { command: 'payments', description: 'Pending payments' },
         { command: 'overdue', description: 'Overdue payments' },
@@ -675,6 +676,7 @@ export async function startTelegramBot(): Promise<void> {
       ]);
     } catch {}
 
+    bot.launch();
     console.log('Telegram bot started');
     setupDailyCron();
   } catch (error: any) {
@@ -689,7 +691,7 @@ export function stopTelegramBot(): void {
   }
   if (bot) {
     try {
-      bot.stopPolling();
+      bot.stop();
     } catch {}
     bot = null;
     console.log('Telegram bot stopped');
