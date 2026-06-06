@@ -662,6 +662,35 @@ export async function startTelegramBot(): Promise<void> {
               `UPDATE fee_payments SET verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1`,
               [paymentId]
             );
+
+            const payInfo = await pool.query(`
+              SELECT fp.amount, fp.receipt_number, TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
+                     s.name AS student_name, s.phone, b.name AS branch_name
+              FROM fee_payments fp
+              JOIN students s ON s.id = fp.student_id
+              JOIN branches b ON b.id = s.branch_id
+              WHERE fp.id = $1
+            `, [paymentId]);
+
+            if (payInfo.rows[0]) {
+              const p = payInfo.rows[0];
+              const receiptMsg = [
+                `Receipt: ${p.receipt_number ?? 'N/A'}`,
+                `Student: ${p.student_name}`,
+                `Amount: Rs ${Number(p.amount).toLocaleString('en-IN')}`,
+                `Date: ${p.payment_date}`,
+                `Branch: ${p.branch_name}`,
+                `Status: Verified by admin`,
+              ].join('\n');
+
+              await pool.query(`
+                INSERT INTO payment_communications (student_id, payment_id, branch_id, communication_type, channel, delivery_status, delivery_mode, recipient_phone, message_body, sent_at)
+                SELECT fp.student_id, fp.id, s.branch_id, 'payment_receipt', 'sms', 'logged', 'log_only', $2, $3, CURRENT_TIMESTAMP
+                FROM fee_payments fp
+                JOIN students s ON s.id = fp.student_id
+                WHERE fp.id = $1
+              `, [paymentId, p.phone, receiptMsg]);
+            }
           } else {
             await pool.query(
               `UPDATE fee_payments SET status = 'pending', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1`,
@@ -669,7 +698,7 @@ export async function startTelegramBot(): Promise<void> {
             );
           }
 
-          await respond(chatId, `Payment #${paymentId} marked as ${isConfirm ? 'verified' : 'rejected'}`);
+          await respond(chatId, `Payment #${paymentId} ${isConfirm ? 'confirmed and receipt logged' : 'rejected'}`);
           return;
         }
 
