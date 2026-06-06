@@ -39,6 +39,8 @@ jobs:
       - name: Build Electron app
         run: npm run electron:build --win
         working-directory: desktop-app
+        env:
+          VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
 
       - name: Upload release to VPS
         uses: appleboy/scp-action@v0.1.7

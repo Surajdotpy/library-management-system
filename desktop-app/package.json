@@ -48,7 +48,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://www.coffeeaurkitaab.co.in/"
+      "url": "https://www.coffeeaurkitaab.co.in/releases"
     }
   },
   "dependencies": {
