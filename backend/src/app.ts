@@ -13,6 +13,7 @@ import seatRoutes from './modules/seats/seats.routes.ts';
 import studentRoutes from './modules/students/students.routes.ts';
 import userRoutes from './modules/users/users.routes.ts';
 import reportsRoutes from './modules/reports/reports.routes.ts';
+import feesRoutes from './modules/fees/fees.routes.ts';
 import { generalApiRateLimiter } from './middleware/rate-limit.middleware.ts';
 
 const app: Application = express();
@@ -74,6 +75,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/seats', seatRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/fees', feesRoutes);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json({
