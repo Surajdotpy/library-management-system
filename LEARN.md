@@ -1,6 +1,6 @@
-# Learn Coding & Deployment from Zero
+﻿# Learn Coding & Deployment from Zero
 
-This guide teaches you everything from scratch — what each thing is, why we use it, and how to do it yourself in any project.
+This guide teaches you everything from scratch â€” what each thing is, why we use it, and how to do it yourself in any project.
 
 ---
 
@@ -16,17 +16,17 @@ You wrote code on your computer. Only YOU can see it. You want the world (or you
 
 ```
 Your Computer (development)
-    ↓
+    â†“
     You write code, test it
-    ↓
+    â†“
 GitHub (code storage)
-    ↓
+    â†“
     You push code here
-    ↓
+    â†“
 Server/VPS (production)
-    ↓
+    â†“
     Code runs here 24/7
-    ↓
+    â†“
 Users access it
 ```
 
@@ -62,10 +62,10 @@ npm start
 
 ### 2. CI/CD Deployment (Modern way)
 
-You push code to GitHub → everything happens automatically.
+You push code to GitHub â†’ everything happens automatically.
 
 ```
-You push → GitHub detects it → CI builds code → CD deploys to server
+You push â†’ GitHub detects it â†’ CI builds code â†’ CD deploys to server
 ```
 
 **Good for:** Every real project
@@ -73,7 +73,7 @@ You push → GitHub detects it → CI builds code → CD deploys to server
 
 ### 3. Docker Deployment
 
-Your app runs inside a "container" — like a lightweight virtual machine.
+Your app runs inside a "container" â€” like a lightweight virtual machine.
 
 ```
 Your code + all dependencies + settings = Container
@@ -127,7 +127,7 @@ ssh username@server_ip
 
 | Part | Meaning |
 |------|---------|
-| `ssh` | Secure Shell — encrypted connection |
+| `ssh` | Secure Shell â€” encrypted connection |
 | `username` | Usually `root` or `kitaab` |
 | `server_ip` | Your VPS's IP address |
 
@@ -192,9 +192,9 @@ nano filename.txt
 Inside nano:
 - Type to write text
 - Arrow keys to move
-- Ctrl+X → Exit
-- Y → Yes (save changes)
-- Enter → Confirm filename
+- Ctrl+X â†’ Exit
+- Y â†’ Yes (save changes)
+- Enter â†’ Confirm filename
 ```
 
 ### File permissions explained
@@ -243,12 +243,12 @@ Why? Different:
 Docker packages your app + everything it needs into a "container."
 
 ```
-┌─────────────────────┐
-│   Your App          │
-│   Node.js 22        │
-│   npm packages      │
-│   Ubuntu base       │
-└─────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Your App          â”‚
+â”‚   Node.js 22        â”‚
+â”‚   npm packages      â”‚
+â”‚   Ubuntu base       â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
        Container
 ```
 
@@ -258,12 +258,12 @@ The container runs the same everywhere.
 
 ```
 Virtual Machine:         Docker Container:
-┌──────────────────┐    ┌──────────────────┐
-│ App              │    │ App              │
-│ Guest OS (2GB)   │    │ Shared OS kernel │
-│ Hypervisor       │    │ Docker Engine    │
-│ Host OS          │    │ Host OS          │
-└──────────────────┘    └──────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ App              â”‚    â”‚ App              â”‚
+â”‚ Guest OS (2GB)   â”‚    â”‚ Shared OS kernel â”‚
+â”‚ Hypervisor       â”‚    â”‚ Docker Engine    â”‚
+â”‚ Host OS          â”‚    â”‚ Host OS          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 Heavy (GBs)             Light (MBs)
 Slow start              Instant start
 ```
@@ -309,10 +309,10 @@ services:
 
 ### Why we use Docker
 
-1. **Same everywhere** — No "Works on my machine" problem
-2. **Easy restart** — One command to restart everything
-3. **Isolation** — Each app has its own environment
-4. **Version control** — You can save and restore versions
+1. **Same everywhere** â€” No "Works on my machine" problem
+2. **Easy restart** â€” One command to restart everything
+3. **Isolation** â€” Each app has its own environment
+4. **Version control** â€” You can save and restore versions
 
 ---
 
@@ -327,7 +327,7 @@ Your backend runs on port 5000. Users type `http://server:5000`. That's ugly.
 Nginx sits in front of your app. Users type `http://yourdomain.com` and Nginx forwards to your app.
 
 ```
-User → yourdomain.com:80 → Nginx → Backend:5000
+User â†’ yourdomain.com:80 â†’ Nginx â†’ Backend:5000
 ```
 
 ### What Nginx handles
@@ -373,7 +373,7 @@ server {
     }
 
     location / {
-        proxy_pass http://backend:5000;        # All other requests → backend
+        proxy_pass http://backend:5000;        # All other requests â†’ backend
     }
 }
 ```
@@ -395,7 +395,7 @@ After changing config:
 docker compose restart nginx
 ```
 
-Not `docker compose up -d --build` — nginx config doesn't need a rebuild, just a restart.
+Not `docker compose up -d --build` â€” nginx config doesn't need a rebuild, just a restart.
 
 ---
 
@@ -407,7 +407,7 @@ When you send data over the internet, anyone can read it (like a postcard).
 
 ### The solution
 
-HTTPS encrypts everything — like putting your postcard in a locked box.
+HTTPS encrypts everything â€” like putting your postcard in a locked box.
 
 ```
 HTTP:   readable by everyone
@@ -417,7 +417,7 @@ HTTPS:  encrypted, only server can read
 ### How SSL works
 
 1. You buy/install an SSL certificate on your server
-2. Browser connects → server sends certificate
+2. Browser connects â†’ server sends certificate
 3. Browser verifies certificate is real
 4. Encrypted connection established
 
@@ -431,8 +431,8 @@ sudo certbot certonly --standalone -d yourdomain.com
 This creates certificate files:
 ```
 /etc/letsencrypt/live/yourdomain.com/
-├── fullchain.pem    # Certificate
-└── privkey.pem      # Private key (keep secret)
+â”œâ”€â”€ fullchain.pem    # Certificate
+â””â”€â”€ privkey.pem      # Private key (keep secret)
 ```
 
 ### Auto-renewal
@@ -465,7 +465,7 @@ This takes time and you might make mistakes.
 CI/CD does all of this automatically when you push code to GitHub.
 
 ```
-You push code → GitHub Actions runs → Server updated
+You push code â†’ GitHub Actions runs â†’ Server updated
 ```
 
 ### CI vs CD
@@ -518,7 +518,7 @@ jobs:
 Passwords and keys stored safely in GitHub (not visible in code):
 
 ```
-Settings → Secrets and variables → Actions → New repository secret
+Settings â†’ Secrets and variables â†’ Actions â†’ New repository secret
 ```
 
 Common secrets:
@@ -548,12 +548,12 @@ Cron = Your personal robot that runs tasks on schedule
 ### Crontab syntax
 
 ```bash
-┌───────── minute (0-59)
-│ ┌──────── hour (0-23)
-│ │ ┌────── day of month (1-31)
-│ │ │ ┌──── month (1-12)
-│ │ │ │ ┌── day of week (0-6, Sunday=0)
-│ │ │ │ │
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€ minute (0-59)
+â”‚ â”Œâ”€â”€â”€â”€â”€â”€â”€â”€ hour (0-23)
+â”‚ â”‚ â”Œâ”€â”€â”€â”€â”€â”€ day of month (1-31)
+â”‚ â”‚ â”‚ â”Œâ”€â”€â”€â”€ month (1-12)
+â”‚ â”‚ â”‚ â”‚ â”Œâ”€â”€ day of week (0-6, Sunday=0)
+â”‚ â”‚ â”‚ â”‚ â”‚
 * * * * * command_to_run
 ```
 
@@ -597,72 +597,72 @@ If you see files with today's date, it's working.
 
 ```
 Your Computer
-  │
-  │ git push
-  ▼
+  â”‚
+  â”‚ git push
+  â–¼
 GitHub (code storage)
-  │
-  │ GitHub Actions (CI/CD)
-  │   ├── SSH into VPS
-  │   ├── git pull
-  │   └── docker compose up -d --build
-  ▼
+  â”‚
+  â”‚ GitHub Actions (CI/CD)
+  â”‚   â”œâ”€â”€ SSH into VPS
+  â”‚   â”œâ”€â”€ git pull
+  â”‚   â””â”€â”€ docker compose up -d --build
+  â–¼
 VPS (your server)
-  │
-  ├── Docker Containers
-  │   ├── Nginx (port 80, 443)
-  │   │   ├── Reverse proxy → Backend
-  │   │   └── Static files → /releases
-  │   ├── Backend (port 5000)
-  │   │   ├── API endpoints
-  │   │   └── Authentication
-  │   └── PostgreSQL (port 5432)
-  │       └── Database storage
-  │
-  ├── Cron Jobs
-  │   └── Daily backup at 2 AM
-  │
-  └── Security
-      ├── UFW Firewall
-      ├── Fail2Ban
-      └── HTTPS (Let's Encrypt)
+  â”‚
+  â”œâ”€â”€ Docker Containers
+  â”‚   â”œâ”€â”€ Nginx (port 80, 443)
+  â”‚   â”‚   â”œâ”€â”€ Reverse proxy â†’ Backend
+  â”‚   â”‚   â””â”€â”€ Static files â†’ /releases
+  â”‚   â”œâ”€â”€ Backend (port 5000)
+  â”‚   â”‚   â”œâ”€â”€ API endpoints
+  â”‚   â”‚   â””â”€â”€ Authentication
+  â”‚   â””â”€â”€ PostgreSQL (port 5432)
+  â”‚       â””â”€â”€ Database storage
+  â”‚
+  â”œâ”€â”€ Cron Jobs
+  â”‚   â””â”€â”€ Daily backup at 2 AM
+  â”‚
+  â””â”€â”€ Security
+      â”œâ”€â”€ UFW Firewall
+      â”œâ”€â”€ Fail2Ban
+      â””â”€â”€ HTTPS (Let's Encrypt)
 ```
 
 ### Request flow
 
 ```
 User opens app
-  │
-  ▼
-Browser → https://coffeeaurkitaab.co.in
-  │
-  ▼
-DNS (domain → IP)
-  │
-  ▼
+  â”‚
+  â–¼
+Browser â†’ https://coffeeaurkitaab.co.in
+  â”‚
+  â–¼
+DNS (domain â†’ IP)
+  â”‚
+  â–¼
 VPS Firewall (allows ports 80, 443)
-  │
-  ▼
+  â”‚
+  â–¼
 Nginx (listening on port 443)
-  │
-  ├── If URL is /releases/* → Serve file directly
-  │
-  └── If URL is /* → Forward to Backend:5000
-        │
-        ▼
+  â”‚
+  â”œâ”€â”€ If URL is /releases/* â†’ Serve file directly
+  â”‚
+  â””â”€â”€ If URL is /* â†’ Forward to Backend:5000
+        â”‚
+        â–¼
       Backend (Express API)
-        │
-        ├── Check JWT token (authentication)
-        ├── Process request
-        └── Query database (PostgreSQL)
-              │
-              ▼
+        â”‚
+        â”œâ”€â”€ Check JWT token (authentication)
+        â”œâ”€â”€ Process request
+        â””â”€â”€ Query database (PostgreSQL)
+              â”‚
+              â–¼
             Response sent back through the chain
 ```
 
 ---
 
-## Part 11: Step-by-Step — Deploy Any Project to VPS
+## Part 11: Step-by-Step â€” Deploy Any Project to VPS
 
 ### Step 1: Get a VPS
 
@@ -759,7 +759,7 @@ crontab -e
 
 ### Step 14: Set up CI/CD (GitHub Actions)
 
-1. Go to GitHub repo → Settings → Secrets → Add:
+1. Go to GitHub repo â†’ Settings â†’ Secrets â†’ Add:
    - `VPS_HOST`: your server IP
    - `VPS_USER`: kitaab
    - `VPS_SSH_KEY`: your private SSH key
@@ -770,7 +770,7 @@ crontab -e
 
 ---
 
-## Part 12: Debugging — When Things Go Wrong
+## Part 12: Debugging â€” When Things Go Wrong
 
 ### Website not loading?
 
@@ -891,12 +891,12 @@ sudo kill -9 PROCESS_ID
 
 When something breaks:
 
-1. **Don't panic** — Bugs are normal
-2. **Read the error message** — It tells you what's wrong
-3. **Check logs** — `docker compose logs`
-4. **Google the error** — Someone else had it
-5. **Change one thing at a time** — Change, test, change, test
-6. **If stuck, go back to last working state** — What changed since it worked?
+1. **Don't panic** â€” Bugs are normal
+2. **Read the error message** â€” It tells you what's wrong
+3. **Check logs** â€” `docker compose logs`
+4. **Google the error** â€” Someone else had it
+5. **Change one thing at a time** â€” Change, test, change, test
+6. **If stuck, go back to last working state** â€” What changed since it worked?
 
 ### Example debug
 
@@ -905,38 +905,38 @@ Problem: Website shows "502 Bad Gateway"
 
 Step 1: Check Docker
 $ docker ps
-→ backend container not running
+â†’ backend container not running
 
 Step 2: Check backend logs
 $ docker logs backend
-→ Error: Cannot connect to database
+â†’ Error: Cannot connect to database
 
 Step 3: Check database
 $ docker ps | grep postgres
-→ postgres container running
+â†’ postgres container running
 
 Step 4: Check database config
 $ docker compose exec backend cat .env
-→ DATABASE_HOST=wrong_host
+â†’ DATABASE_HOST=wrong_host
 
 Step 5: Fix it
 $ nano backend/.env
-→ Change DATABASE_HOST to postgres
+â†’ Change DATABASE_HOST to postgres
 
 Step 6: Rebuild
 $ docker compose up -d --build
 
 Step 7: Test
-Website loads! ✅
+Website loads! âœ…
 ```
 
 ### Golden rules
 
-- **One change at a time** — Change one thing, test, then change next
-- **Always read the error** — The error message tells you exactly what's wrong
-- **Google it** — Copy the error message into Google
-- **Ask ChatGpt** — Paste the error and your config
-- **Take notes** — When you fix something, write it down
+- **One change at a time** â€” Change one thing, test, then change next
+- **Always read the error** â€” The error message tells you exactly what's wrong
+- **Google it** â€” Copy the error message into Google
+- **Ask ChatGpt** â€” Paste the error and your config
+- **Take notes** â€” When you fix something, write it down
 
 ---
 
@@ -968,7 +968,7 @@ To learn, do these in order:
 
 - Create GitHub repo
 - Add deploy.yml workflow
-- Push → auto-deploys
+- Push â†’ auto-deploys
 
 ### Level 5: Full stack
 
@@ -985,7 +985,7 @@ To learn, do these in order:
 
 ## Part 15: Code Concepts from Scratch
 
-This section explains the code we wrote today — every line, what it means, why we wrote it.
+This section explains the code we wrote today â€” every line, what it means, why we wrote it.
 
 ---
 
@@ -1009,8 +1009,8 @@ const email = 'admin@test.com';
 ```tsx
 const name = 'John';  // Cannot change later
 let age = 25;          // Can change later
-age = 26;              // ✅ Works
-name = 'Jane';         // ❌ Error
+age = 26;              // âœ… Works
+name = 'Jane';         // âŒ Error
 ```
 
 ### Why we use variables
@@ -1087,7 +1087,7 @@ Think of it like a light switch:
 ### Why not just a variable?
 
 ```tsx
-let showPassword = false;    // ❌ Won't work
+let showPassword = false;    // âŒ Won't work
 showPassword = true;          // Changes value but page doesn't update
 ```
 
@@ -1095,7 +1095,7 @@ showPassword = true;          // Changes value but page doesn't update
 
 ---
 
-### 15.4 Show/Hide Password — Full Code Explained
+### 15.4 Show/Hide Password â€” Full Code Explained
 
 ```tsx
 // Step 1: Import icons from lucide-react library
@@ -1147,8 +1147,8 @@ onClick={() => setShowPassword(!showPassword)}
 ```
 
 `!showPassword` means "opposite of current value":
-- If `showPassword` is `false` → `!false` = `true` → show password
-- If `showPassword` is `true` → `!true` = `false` → hide password
+- If `showPassword` is `false` â†’ `!false` = `true` â†’ show password
+- If `showPassword` is `true` â†’ `!true` = `false` â†’ hide password
 
 ### How to use in any project
 
@@ -1162,14 +1162,14 @@ onClick={() => setShowPassword(!showPassword)}
 
 Ways to use code from other files.
 
-### Export — making code available to others
+### Export â€” making code available to others
 
 ```tsx
 // auth.controller.ts
 export async function login(req, res) { ... }
 ```
 
-### Import — using code from another file
+### Import â€” using code from another file
 
 ```tsx
 // auth.routes.ts
@@ -1210,9 +1210,9 @@ import * as authController from './file';
 
 ### Why we split code into files
 
-- **Organized** — Each file has one purpose
-- **Reusable** — Same function used in multiple places
-- **Maintainable** — Change one file without touching others
+- **Organized** â€” Each file has one purpose
+- **Reusable** â€” Same function used in multiple places
+- **Maintainable** â€” Change one file without touching others
 
 ---
 
@@ -1221,7 +1221,7 @@ import * as authController from './file';
 A reusable piece of UI.
 
 ```tsx
-// Button.tsx — a reusable button component
+// Button.tsx â€” a reusable button component
 export function Button({ label, onClick }) {
   return <button onClick={onClick}>{label}</button>;
 }
@@ -1260,7 +1260,7 @@ function Greeting({ name }) {
   return <h1>Hello, {name}!</h1>;
 }
 
-// Using it — passing name as prop
+// Using it â€” passing name as prop
 <Greeting name="John" />    // Shows: Hello, John!
 <Greeting name="Jane" />    // Shows: Hello, Jane!
 ```
@@ -1275,12 +1275,12 @@ router.post('/login', middleware1, middleware2, controller);
 
 When user sends POST to `/api/auth/login`, Express runs:
 
-1. **First**: `middleware1` (rate limiter) — checks if too many requests
-2. **Second**: `middleware2` (validation) — checks if input is valid
-3. **Third**: `controller` — actually logs the user in
+1. **First**: `middleware1` (rate limiter) â€” checks if too many requests
+2. **Second**: `middleware2` (validation) â€” checks if input is valid
+3. **Third**: `controller` â€” actually logs the user in
 
 ```
-Request → Rate Limiter → Validation → Login Controller → Response
+Request â†’ Rate Limiter â†’ Validation â†’ Login Controller â†’ Response
            (block if         (block if      (process
             too many)         bad input)     login)
 ```
@@ -1305,12 +1305,12 @@ function myMiddleware(req, res, next) {
 ### Why middleware order matters
 
 ```tsx
-app.use(helmet());           // 1st — security
-app.use(cors());             // 2nd — allow cross-origin
-app.use(express.json());     // 3rd — parse JSON body
-app.use(rateLimiter);        // 4th — rate limit
-app.use('/api', routes);     // 5th — actual routes
-app.use(errorHandler);       // 6th — catch errors
+app.use(helmet());           // 1st â€” security
+app.use(cors());             // 2nd â€” allow cross-origin
+app.use(express.json());     // 3rd â€” parse JSON body
+app.use(rateLimiter);        // 4th â€” rate limit
+app.use('/api', routes);     // 5th â€” actual routes
+app.use(errorHandler);       // 6th â€” catch errors
 ```
 
 If you put routes before helmet, requests would be processed before security headers are added.
@@ -1326,14 +1326,14 @@ Checking if user input is correct BEFORE processing it.
 Without validation:
 ```tsx
 // User sends: { email: "", password: "" }
-// Server tries to log in with empty values → crash or security hole
+// Server tries to log in with empty values â†’ crash or security hole
 ```
 
 With validation:
 ```tsx
 // Zod checks: is email valid? is password not empty?
-// If bad → return error immediately
-// If good → process login
+// If bad â†’ return error immediately
+// If good â†’ process login
 ```
 
 ### Zod syntax
@@ -1354,7 +1354,7 @@ const loginSchema = z.object({
 | `.email()` | The text must have @ symbol |
 | `.min(1)` | At least 1 character |
 
-### safeParse — try to validate
+### safeParse â€” try to validate
 
 ```tsx
 const result = loginSchema.safeParse(req.body);
@@ -1364,11 +1364,11 @@ const result = loginSchema.safeParse(req.body);
 
 ```tsx
 if (result.success) {
-  // ✅ Input is good
+  // âœ… Input is good
   req.body = result.data;  // Use cleaned data
   next();                   // Continue
 } else {
-  // ❌ Input is bad
+  // âŒ Input is bad
   return res.status(400).json({
     error: result.error.errors.map(e => e.message).join(', ')
   });
@@ -1415,13 +1415,13 @@ Combines array items into one string with separator:
 ### Why Zod instead of writing if-else manually?
 
 ```tsx
-// Without Zod — manual checks
+// Without Zod â€” manual checks
 if (!email) error = 'Email required';
 if (!email.includes('@')) error = 'Invalid email';
 if (!password) error = 'Password required';
 if (password.length < 6) error = 'Password too short';
 
-// With Zod — one schema
+// With Zod â€” one schema
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -1432,7 +1432,7 @@ Zod is cleaner, reusable, and gives better error messages.
 
 ---
 
-### 15.9 Helmet — Security Headers Explained
+### 15.9 Helmet â€” Security Headers Explained
 
 ### What are HTTP headers?
 
@@ -1444,8 +1444,8 @@ When server responds to browser, it sends:
 Status: 200 OK
 Headers:
   Content-Type: application/json
-  X-Frame-Options: DENY          ← Helmet adds
-  Strict-Transport-Security: ...  ← Helmet adds
+  X-Frame-Options: DENY          â† Helmet adds
+  Strict-Transport-Security: ...  â† Helmet adds
 Body: {"success": true}
 ```
 
@@ -1530,11 +1530,11 @@ COPY . .                # Changes EVERY time you modify code
 RUN npm run build       # Runs every time
 ```
 
-This is faster — if only code changed, Docker reuses the cached `npm install` layer.
+This is faster â€” if only code changed, Docker reuses the cached `npm install` layer.
 
 ### Why `USER node`?
 
-By default, containers run as `root` — full power. If a hacker gets in:
+By default, containers run as `root` â€” full power. If a hacker gets in:
 - **Root**: Can install software, read all files, escape to host
 - **node user**: Can only access `/app` folder
 
@@ -1614,7 +1614,7 @@ Good messages help you find what changed later.
 
 | Term | Simple meaning | Analogy |
 |------|---------------|---------|
-| **API** | URL that returns data (not a webpage) | Restaurant menu — you ask, kitchen gives |
+| **API** | URL that returns data (not a webpage) | Restaurant menu â€” you ask, kitchen gives |
 | **JSON** | Way to write data: `{"name":"John"}` | A form with labeled fields |
 | **Endpoint** | A specific URL like `/api/auth/login` | A specific page in a menu |
 | **Middleware** | Code that runs BEFORE your main code | Security guard checking ID before entry |
@@ -1647,7 +1647,7 @@ Good messages help you find what changed later.
 | `"John"` | The actual value |
 | `,` | Separates items |
 
-JSON is everywhere in web development — it's how apps talk to servers.
+JSON is everywhere in web development â€” it's how apps talk to servers.
 
 ### What is an Object?
 
@@ -1693,10 +1693,10 @@ fruits.length  // 3 (how many items)
 When your browser/app talks to a server:
 
 ```
-GET    → Get data (read)
-POST   → Create new data (login, signup)
-PUT    → Update existing data
-DELETE → Delete data
+GET    â†’ Get data (read)
+POST   â†’ Create new data (login, signup)
+PUT    â†’ Update existing data
+DELETE â†’ Delete data
 ```
 
 Each request gets a response with a status code:
@@ -1718,13 +1718,13 @@ Each request gets a response with a status code:
 
 ### The learning method
 
-1. **Read code** — Open a file, read each line
-2. **Understand one line** — What does it do?
-3. **Change one thing** — Modify a number, text, or color
-4. **Run and see** — See what changed
-5. **Break it** — Remove a line, see what error you get
-6. **Fix it** — Put it back
-7. **Google error** — Copy-paste error into Google
+1. **Read code** â€” Open a file, read each line
+2. **Understand one line** â€” What does it do?
+3. **Change one thing** â€” Modify a number, text, or color
+4. **Run and see** â€” See what changed
+5. **Break it** â€” Remove a line, see what error you get
+6. **Fix it** â€” Put it back
+7. **Google error** â€” Copy-paste error into Google
 
 ### Safe places to practice
 
@@ -1749,19 +1749,19 @@ Each request gets a response with a status code:
 ### Debugging practice
 
 When you see an error:
-1. **Read the error** — It tells you file and line number
-2. **Copy the error** — Paste into Google
-3. **Try one fix** — Change one thing
-4. **Test again** — Did it work?
-5. **Repeat** — If not, try next fix
+1. **Read the error** â€” It tells you file and line number
+2. **Copy the error** â€” Paste into Google
+3. **Try one fix** â€” Change one thing
+4. **Test again** â€” Did it work?
+5. **Repeat** â€” If not, try next fix
 
 ### Golden rule
 
-Code is just text. Computers follow instructions literally. When something breaks, it's because you told it to do something different than what you intended. Find where your instruction differs from your intention — that's the bug.
+Code is just text. Computers follow instructions literally. When something breaks, it's because you told it to do something different than what you intended. Find where your instruction differs from your intention â€” that's the bug.
 
 ---
 
-# Part 17: Payments — The Complete System
+# Part 17: Payments â€” The Complete System
 
 ## 17.1 Overview
 
@@ -1882,7 +1882,7 @@ Two types of outbound messages:
 | Receipt | Payment confirmed (`confirmPayment` or webhook) | SMS, WhatsApp, or both |
 | Reminder | `sendPaymentReminders` batch job | SMS, WhatsApp, or both |
 
-The dispatch order is: try WhatsApp first (using configured provider), fall back to SMS. If both fail, the message status is logged as `failed` but the payment is unaffected. Communication errors are caught and logged — they never bubble up to fail the payment transaction.
+The dispatch order is: try WhatsApp first (using configured provider), fall back to SMS. If both fail, the message status is logged as `failed` but the payment is unaffected. Communication errors are caught and logged â€” they never bubble up to fail the payment transaction.
 
 ---
 
@@ -1893,8 +1893,8 @@ The dispatch order is: try WhatsApp first (using configured provider), fall back
 ```
 ISOLATION LEVEL READ COMMITTED
   SELECT FOR UPDATE on existing pending payment for same student+month+year
-  IF exists && paid → 409 "already submitted"
-  IF exists && pending → 409 "already pending verification"
+  IF exists && paid â†’ 409 "already submitted"
+  IF exists && pending â†’ 409 "already pending verification"
   INSERT new fee_payment with status = 'pending'
 COMMIT
 ```
@@ -1920,7 +1920,7 @@ try {
 BEGIN
   SELECT FOR UPDATE on existing pending payment for same student+month+year
   Validate student, calculate expected fee
-  IF amount mismatch → throw
+  IF amount mismatch â†’ throw
 COMMIT
 // After commit:
   Call Cashfree API to create order + payment session
@@ -1934,8 +1934,8 @@ COMMIT
 
 Given:
 - `R` = fee_payments row for student S, month M, year Y
-- `T1` = staff records a manual payment of ₹2000 for (S, M, Y) → status `pending`
-- `T2` = Cashfree webhook arrives for same (S, M, Y) but for ₹2000 amount
+- `T1` = staff records a manual payment of â‚¹2000 for (S, M, Y) â†’ status `pending`
+- `T2` = Cashfree webhook arrives for same (S, M, Y) but for â‚¹2000 amount
 
 **Question:** Can a student be double-charged?
 
@@ -1943,13 +1943,13 @@ Given:
 
 1. `recordPayment(T1)`: `SELECT FOR UPDATE` on existing pending payment for (S, M, Y). None found. Inserts new `fee_payments` row with status `pending`. Commits.
 
-2. Cashfree webhook arrives. `confirmPaymentFromWebhook(T2)` → `confirmPendingPayment`:
+2. Cashfree webhook arrives. `confirmPaymentFromWebhook(T2)` â†’ `confirmPendingPayment`:
    - `SELECT FOR UPDATE` on payment record by `transaction_id` or `payment_id`
    - Finds the pending payment from T1
    - Updates to `paid`
    - Commits
 
-3. Staff T1 later calls `confirmPayment` → `confirmPendingPayment`:
+3. Staff T1 later calls `confirmPayment` â†’ `confirmPendingPayment`:
    - `SELECT FOR UPDATE` on the same payment
    - Status is now `paid`
    - Returns existing record without changes
@@ -2023,11 +2023,11 @@ export default function StudentPaymentPage() {
       .then(data => setPayment(data.data));
   }, [accessToken]);
 
-  if (payment.status === 'paid') return <div>Payment Successful ✅</div>;
+  if (payment.status === 'paid') return <div>Payment Successful âœ…</div>;
 
   return (
     <div>
-      <h1>Pay ₹{payment.amount}</h1>
+      <h1>Pay â‚¹{payment.amount}</h1>
       {payment.gateway_upi_intent && (
         <QRCodeSVG value={payment.gateway_upi_intent} size={200} />
       )}
@@ -2043,7 +2043,7 @@ export default function StudentPaymentPage() {
 
 ---
 
-### 17.11 The Complete Flow — Step by Step
+### 17.11 The Complete Flow â€” Step by Step
 
 ```
 Step 1: Admin selects student on PaymentsPage
@@ -2063,7 +2063,7 @@ Step 13: Frontend updates in real-time
 
 ---
 
-### 17.12 Security — Every Layer
+### 17.12 Security â€” Every Layer
 
 1. **Webhook signature verification**: HMAC-SHA256
 2. **Timestamp freshness check**: Rejects webhooks > 5 min old
@@ -2083,23 +2083,23 @@ Step 13: Frontend updates in real-time
 | Processing fake webhook | HMAC signature + timestamp freshness |
 | Wrong amount entered | Amount locked to DB value |
 | Payment confirmed but not notified | Auto-send receipt, log on failure |
-| Payment shows paid before arrival | Two-step: pending → paid |
+| Payment shows paid before arrival | Two-step: pending â†’ paid |
 
 ---
 
-### 17.14: How to Write Payment Code for Any App — First Principles
+### 17.14: How to Write Payment Code for Any App â€” First Principles
 
-#### 17.14.1: First Principles — What Is a Payment System?
+#### 17.14.1: First Principles â€” What Is a Payment System?
 
 At the most fundamental level, payment is just three operations:
 
 ```
-1. CREATE  →  Someone wants to pay, we record the intent (status = pending)
-2. CONFIRM →  Money has arrived, we mark it done (status = paid)
-3. FAIL    →  Something went wrong, we note it (status = failed)
+1. CREATE  â†’  Someone wants to pay, we record the intent (status = pending)
+2. CONFIRM â†’  Money has arrived, we mark it done (status = paid)
+3. FAIL    â†’  Something went wrong, we note it (status = failed)
 ```
 
-Everything else — QR codes, webhooks, receipts, reminders, refunds — is built on top of these three operations.
+Everything else â€” QR codes, webhooks, receipts, reminders, refunds â€” is built on top of these three operations.
 
 #### 17.14.2: The Planning Phase
 
@@ -2116,15 +2116,15 @@ Ask yourself:
 #### 17.14.3: Define the State Machine
 
 ```
-                  ┌──────────┐
-                  │  PENDING │◄──── Start here
-                  └────┬─────┘
-                       │
-            ┌──────────┼──────────┐
-            ▼          ▼          ▼
-        ┌──────┐  ┌──────┐  ┌────────┐
-        │ PAID │  │FAILED│  │REFUNDED│
-        └──────┘  └──────┘  └────────┘
+                  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                  â”‚  PENDING â”‚â—„â”€â”€â”€â”€ Start here
+                  â””â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”˜
+                       â”‚
+            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+            â–¼          â–¼          â–¼
+        â”Œâ”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”
+        â”‚ PAID â”‚  â”‚FAILEDâ”‚  â”‚REFUNDEDâ”‚
+        â””â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 #### 17.14.4: Gateway Abstraction (The Swappable Part)
@@ -2149,7 +2149,7 @@ function getActiveProvider(): PaymentGatewayProvider {
 }
 ```
 
-**Key**: The REST of the app calls `createGatewayOrder()` and `verifyGatewayWebhook()` — it NEVER calls a provider directly. Switch gateways by changing ONE env variable.
+**Key**: The REST of the app calls `createGatewayOrder()` and `verifyGatewayWebhook()` â€” it NEVER calls a provider directly. Switch gateways by changing ONE env variable.
 
 #### 17.14.5: Defining the Data Model
 
@@ -2172,9 +2172,9 @@ payments:
 
 ```
 try {
-  parse → validate → authenticate → call service → respond
+  parse â†’ validate â†’ authenticate â†’ call service â†’ respond
 } catch (error) {
-  log → classify error → respond with appropriate status
+  log â†’ classify error â†’ respond with appropriate status
 }
 ```
 
@@ -2182,7 +2182,7 @@ try {
 
 ```typescript
 if (payment.status === 'paid') {
-  return payment;  // ← THIS is idempotency
+  return payment;  // â† THIS is idempotency
 }
 ```
 
@@ -2196,10 +2196,10 @@ if (payment.status === 'paid') {
 
 | Decision | Why |
 |----------|-----|
-| Two-step confirm (pending → paid) | Safety — never mark paid before money arrives |
+| Two-step confirm (pending â†’ paid) | Safety â€” never mark paid before money arrives |
 | Gateway abstraction | Swap gateways without touching business logic |
 | Coverage dates in DB | Works with any gateway, customer controls payment |
-| Mock mode as a provider | Same interface as real — no special cases |
+| Mock mode as a provider | Same interface as real â€” no special cases |
 
 #### 17.14.10: The 5 Questions for Any Payment Feature
 
@@ -2231,7 +2231,7 @@ const rawBody = req.rawBody ?? JSON.stringify(req.body ?? {});
 
 **Fix:** Removed the fallback. `req.rawBody` is now required; returns 400 if missing. Fail-fast is safer than silent HMAC failure.
 
-#### Fix 2: (Skipped — already implemented) TTL on deduplication map
+#### Fix 2: (Skipped â€” already implemented) TTL on deduplication map
 
 The `processedCashfreeWebhooks` map was initially reported as unbounded. However, it already stores `number` (expiry timestamps) and runs `cleanupProcessedCashfreeWebhooks()` before every check. The cleanup function deletes entries whose TTL has passed. No change needed.
 
@@ -2269,7 +2269,7 @@ Both `confirmPayment` and `simulateCashfreeSuccess` passed hardcoded `undefined`
 const payment = await paymentService.confirmPayment(paymentId, user.userId, undefined, data);
 ```
 
-These endpoints have `requireSuperAdmin` middleware, so `undefined` is correct (superadmins see all branches). But the intent was unclear — it looked like a bug.
+These endpoints have `requireSuperAdmin` middleware, so `undefined` is correct (superadmins see all branches). But the intent was unclear â€” it looked like a bug.
 
 **Fix:** Changed both to use `resolveAuthorizedBranchId(user)`:
 
@@ -2278,11 +2278,11 @@ const branchId = resolveAuthorizedBranchId(user);
 const payment = await paymentService.confirmPayment(paymentId, user.userId, branchId, data);
 ```
 
-For superadmins, `resolveAuthorizedBranchId` returns `undefined` — same behavior, but the intent is now explicit and consistent with every other controller handler in the module.
+For superadmins, `resolveAuthorizedBranchId` returns `undefined` â€” same behavior, but the intent is now explicit and consistent with every other controller handler in the module.
 
 ---
 
-### 17.16: Don't Make These Mistakes Again — Recognition & Debugging Guide
+### 17.16: Don't Make These Mistakes Again â€” Recognition & Debugging Guide
 
 The 3 bugs we fixed fall into **3 universal categories** that appear in EVERY payment codebase. Learn to spot them anywhere.
 
@@ -2303,26 +2303,26 @@ const email = user.email ?? req.body.email?.toLowerCase();
 const config = rawConfig ?? JSON.parse(JSON.stringify(defaultConfig));
 ```
 
-**Why it's a bug:** The `??` operator says "if left side is null/undefined, use the right side." But the right side produces a **different value** than the left side would have. When you're dealing with cryptographic signatures, exact string equality matters — one extra space breaks everything.
+**Why it's a bug:** The `??` operator says "if left side is null/undefined, use the right side." But the right side produces a **different value** than the left side would have. When you're dealing with cryptographic signatures, exact string equality matters â€” one extra space breaks everything.
 
 **How to spot it in ANY codebase:**
 - Search for `??` (nullish coalescing) where the fallback transforms the data
-- Look at webhook handlers — do they use `req.body` (parsed) or `req.rawBody` (raw string)?
+- Look at webhook handlers â€” do they use `req.body` (parsed) or `req.rawBody` (raw string)?
 - Anywhere you see `JSON.stringify` + `JSON.parse` in the same function, ask "why?"
 
 **The mental checklist:**
 ```
 When you see a fallback, ask:
 1. What's the fallback value? Is it EXACTLY the same as the primary value?
-2. If this is for HMAC/signature — the RAW string must be used, not a re-serialized object
+2. If this is for HMAC/signature â€” the RAW string must be used, not a re-serialized object
 3. Is the fallback hiding a real problem? (e.g., middleware not configured correctly)
 ```
 
-**Better pattern — fail fast:**
+**Better pattern â€” fail fast:**
 ```ts
 const rawBody = req.rawBody;
 if (!rawBody) {
-  throw new Error('Missing raw body — check express.json() verify callback');
+  throw new Error('Missing raw body â€” check express.json() verify callback');
 }
 ```
 
@@ -2355,12 +2355,12 @@ While the fetch hangs, your server holds onto:
 - A request thread (or event loop slot)
 - Memory for the request body
 
-If 10 users' payments hang simultaneously, 10 DB connections are stuck. When the 11th user tries to pay, the pool is empty → "connection refused."
+If 10 users' payments hang simultaneously, 10 DB connections are stuck. When the 11th user tries to pay, the pool is empty â†’ "connection refused."
 
 **How to spot it in ANY codebase:**
 - Search for `fetch(`, `axios.`, `http.request`, `https.request`
-- If there's no `AbortController` or `timeout` option nearby → it's a bug
-- Look at startup code — any external API calls without timeouts
+- If there's no `AbortController` or `timeout` option nearby â†’ it's a bug
+- Look at startup code â€” any external API calls without timeouts
 
 **The mental checklist:**
 ```
@@ -2377,7 +2377,7 @@ const timeoutId = setTimeout(() => controller.abort(), 30_000);
 try {
   response = await fetch(url, { ..., signal: controller.signal });
 } finally {
-  clearTimeout(timeoutId);  // ← ALWAYS clear in finally, not after await
+  clearTimeout(timeoutId);  // â† ALWAYS clear in finally, not after await
 }
 ```
 
@@ -2408,8 +2408,8 @@ The code works, but the team's understanding breaks down over time.
 
 **How to spot it in ANY codebase:**
 - Look for `undefined` or `null` passed as explicit arguments in function calls
-- Compare with other callers of the same function — are they consistent?
-- Search for function calls with more than 3 arguments — these are fragile by nature
+- Compare with other callers of the same function â€” are they consistent?
+- Search for function calls with more than 3 arguments â€” these are fragile by nature
 
 **The mental checklist:**
 ```
@@ -2419,7 +2419,7 @@ When you see an explicit undefined/null argument:
 3. Can I make the intent clearer? (e.g., use the same helper function)
 ```
 
-**Better pattern — use the same function every time:**
+**Better pattern â€” use the same function every time:**
 ```ts
 // EVERY caller does this, even if the result is undefined:
 const branchId = resolveAuthorizedBranchId(user);
@@ -2435,32 +2435,32 @@ This way: uniform code, explicit intent, and if the logic of `resolveAuthorizedB
 When you open a payment codebase for the first time, run through this checklist:
 
 ```
-[ ] CAN I FIND THE 3 STATES? — pending → paid/failed → refunded
+[ ] CAN I FIND THE 3 STATES? â€” pending â†’ paid/failed â†’ refunded
     Where is CREATE? Where is CONFIRM? Where is FAIL?
     
 [ ] CAN I FIND THE WEBHOOK HANDLER?
-    Does it verify a signature? (if no → security bug)
-    Does it check for duplicates? (if no → double-charge risk)
-    Does it use rawBody or parsed body? (if parsed → HMAC will fail)
+    Does it verify a signature? (if no â†’ security bug)
+    Does it check for duplicates? (if no â†’ double-charge risk)
+    Does it use rawBody or parsed body? (if parsed â†’ HMAC will fail)
     
 [ ] CAN I FIND THE OUTBOUND API CALLS?
-    Do they have timeouts? (if no → reliability bug)
-    Are they behind a gateway abstraction? (if no → hard to switch providers)
+    Do they have timeouts? (if no â†’ reliability bug)
+    Are they behind a gateway abstraction? (if no â†’ hard to switch providers)
     
 [ ] CAN I FIND THE CONFIRMATION LOGIC?
-    Does it use row locking (FOR UPDATE)? (if no → race condition risk)
+    Does it use row locking (FOR UPDATE)? (if no â†’ race condition risk)
     Is it idempotent? (if called twice, same result?)
 
 [ ] CAN I FIND THE CONSISTENCY PATTERNS?
-    Do all controllers call the same helper for branchId/userId? (if no → inconsistency)
-    Do all errors follow the same format? (if no → debugging harder)
+    Do all controllers call the same helper for branchId/userId? (if no â†’ inconsistency)
+    Do all errors follow the same format? (if no â†’ debugging harder)
 ```
 
 **Print this checklist. Stick it on your monitor. Use it every time you review payment code.**
 
 ---
 
-#### Mistake #4 (The one we DIDN'T make — but you should know)
+#### Mistake #4 (The one we DIDN'T make â€” but you should know)
 
 There's a 4th mistake that kills payment systems in production. We avoided it, but you need to know:
 
@@ -2468,10 +2468,10 @@ There's a 4th mistake that kills payment systems in production. We avoided it, b
 
 ```
 // DANGER: never do this
-const secretKey = 'sk_test_xxxxxxxxxxxx';  // ← hardcoded!
+const secretKey = 'sk_test_xxxxxxxxxxxx';  // â† hardcoded!
 
 // DANGER: never commit this
-const cashfreeSecret = 'cfsk_xxxxxxxx';  // ← visible in git history forever
+const cashfreeSecret = 'cfsk_xxxxxxxx';  // â† visible in git history forever
 ```
 
 **Fix:** Always use environment variables (`.env`) + secret management.
@@ -2498,7 +2498,7 @@ grep -r "sk_live\|sk_test\|cfsk\|rzp_live\|rzp_test" --include="*.ts" --include=
 | 2 | No timeout on `fetch()` | External APIs will hang eventually | Add `AbortController` to every outbound call |
 | 3 | Hardcoded `undefined` argument | Inconsistency hides bugs | Use the same helper function everywhere |
 
-**The deeper truth:** All 3 bugs are the same bug dressed differently — **assuming things will work when they aren't explicitly handled.** The fix is always: be explicit, fail fast, and never trust a fallback that silently changes your data.
+**The deeper truth:** All 3 bugs are the same bug dressed differently â€” **assuming things will work when they aren't explicitly handled.** The fix is always: be explicit, fail fast, and never trust a fallback that silently changes your data.
 
 ---
 
@@ -2516,3 +2516,6 @@ grep -r "sk_live\|sk_test\|cfsk\|rzp_live\|rzp_test" --include="*.ts" --include=
 | Student page | `pages/StudentPaymentPage.tsx` | Pay without login |
 | DB table | `fee_payments` | Stores all payment records |
 | DB table | `payment_communications` | Stores all SMS/WhatsApp logs |
+
+---
+
