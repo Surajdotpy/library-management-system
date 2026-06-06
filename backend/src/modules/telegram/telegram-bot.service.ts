@@ -1,5 +1,5 @@
 import pool from '../../config/db.ts';
-import type { TelegramSummary, PendingPaymentInfo, SeatInfo, AlertInfo } from './telegram-bot.types.ts';
+import type { TelegramSummary, PendingPaymentInfo, SeatInfo, AlertInfo, BranchInfo, TodayInfo, StudentSearchResult, RevenueInfo, NotificationItem, BookingInfo, DefaulterInfo } from './telegram-bot.types.ts';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const ADMIN_CHAT_IDS = (process.env.TELEGRAM_ADMIN_CHAT_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
@@ -133,6 +133,137 @@ async function getOverduePayments(): Promise<PendingPaymentInfo[]> {
   return result.rows;
 }
 
+async function getBranchSummary(): Promise<BranchInfo[]> {
+  const result = await pool.query(`
+    SELECT
+      b.name AS branch_name,
+      COUNT(DISTINCT s.id) FILTER (WHERE s.is_active = true)::int AS active_students,
+      COUNT(DISTINCT st.id)::int AS total_seats,
+      COUNT(DISTINCT st.id) FILTER (WHERE st.assigned_to_student_id IS NOT NULL)::int AS occupied_seats,
+      COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'paid' AND EXTRACT(MONTH FROM fp.payment_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fp.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)), 0) AS monthly_revenue
+    FROM branches b
+    LEFT JOIN students s ON s.branch_id = b.id
+    LEFT JOIN seats st ON st.branch_id = b.id
+    LEFT JOIN fee_payments fp ON fp.student_id = s.id
+    GROUP BY b.id, b.name
+    ORDER BY b.name
+  `);
+  return result.rows;
+}
+
+async function getTodayInfo(): Promise<TodayInfo> {
+  const result = await pool.query(`
+    SELECT
+      (SELECT COUNT(*) FROM attendance WHERE attendance_date = CURRENT_DATE AND entry_time IS NOT NULL)::int AS attendance_count,
+      (SELECT COUNT(*) FROM students WHERE DATE(joining_date) = CURRENT_DATE)::int AS new_students,
+      (SELECT COALESCE(SUM(amount), 0) FROM fee_payments WHERE status = 'paid' AND DATE(payment_date) = CURRENT_DATE) AS revenue_collected,
+      (SELECT COUNT(*) FROM fee_payments WHERE status = 'pending' AND DATE(payment_date) = CURRENT_DATE)::int AS pending_payments
+  `);
+  return {
+    attendance_count: result.rows[0]?.attendance_count ?? 0,
+    new_students: result.rows[0]?.new_students ?? 0,
+    revenue_collected: Number(result.rows[0]?.revenue_collected ?? 0),
+    pending_payments: result.rows[0]?.pending_payments ?? 0,
+  };
+}
+
+async function findStudent(query: string): Promise<StudentSearchResult[]> {
+  const result = await pool.query(`
+    SELECT
+      s.name,
+      s.student_id,
+      s.is_active,
+      s.study_plan,
+      s.monthly_fee,
+      TO_CHAR(s.joining_date, 'DD Mon YYYY') AS joining_date,
+      b.name AS branch_name,
+      st.seat_number,
+      st.floor_name
+    FROM students s
+    JOIN branches b ON b.id = s.branch_id
+    LEFT JOIN seats st ON st.assigned_to_student_id = s.id
+    WHERE s.name ILIKE $1 OR s.student_id ILIKE $1
+    ORDER BY s.name
+    LIMIT 10
+  `, [`%${query}%`]);
+  return result.rows;
+}
+
+async function getRevenue(): Promise<RevenueInfo> {
+  const result = await pool.query(`
+    SELECT
+      COALESCE(SUM(amount) FILTER (WHERE DATE(payment_date) = CURRENT_DATE), 0) AS today,
+      COALESCE(SUM(amount) FILTER (WHERE payment_date >= DATE_TRUNC('week', CURRENT_DATE)), 0) AS this_week,
+      COALESCE(SUM(amount) FILTER (WHERE EXTRACT(MONTH FROM payment_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)), 0) AS this_month,
+      COALESCE(SUM(amount) FILTER (WHERE EXTRACT(YEAR FROM payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)), 0) AS this_year
+    FROM fee_payments
+    WHERE status = 'paid'
+  `);
+  return {
+    today: Number(result.rows[0]?.today ?? 0),
+    this_week: Number(result.rows[0]?.this_week ?? 0),
+    this_month: Number(result.rows[0]?.this_month ?? 0),
+    this_year: Number(result.rows[0]?.this_year ?? 0),
+  };
+}
+
+async function getNotifications(): Promise<NotificationItem[]> {
+  const result = await pool.query(`
+    SELECT
+      n.type,
+      n.severity,
+      n.title,
+      n.description,
+      b.name AS branch_name,
+      TO_CHAR(n.created_at, 'DD Mon HH24:MI') AS created_at
+    FROM notifications n
+    LEFT JOIN branches b ON b.id = n.branch_id
+    ORDER BY n.created_at DESC
+    LIMIT 10
+  `);
+  return result.rows;
+}
+
+async function getActiveBookings(): Promise<BookingInfo[]> {
+  const result = await pool.query(`
+    SELECT
+      s.name AS student_name,
+      s.student_id,
+      se.seat_number,
+      b.name AS branch_name,
+      sb.status,
+      TO_CHAR(sb.start_date, 'DD Mon YYYY') AS start_date,
+      TO_CHAR(sb.end_date, 'DD Mon YYYY') AS end_date
+    FROM seat_bookings sb
+    JOIN students s ON s.id = sb.student_id
+    JOIN seats se ON se.id = sb.seat_id
+    JOIN branches b ON b.id = sb.branch_id
+    WHERE sb.status = 'active'
+    ORDER BY sb.end_date ASC
+    LIMIT 15
+  `);
+  return result.rows;
+}
+
+async function getDefaulters(): Promise<DefaulterInfo[]> {
+  const result = await pool.query(`
+    SELECT
+      s.name,
+      s.student_id,
+      b.name AS branch_name,
+      COUNT(fp.id)::int AS overdue_count,
+      SUM(fp.amount) AS total_due
+    FROM fee_payments fp
+    JOIN students s ON s.id = fp.student_id
+    JOIN branches b ON b.id = s.branch_id
+    WHERE fp.status = 'pending' AND fp.payment_date < CURRENT_DATE
+    GROUP BY s.id, s.name, s.student_id, b.name
+    ORDER BY total_due DESC
+    LIMIT 10
+  `);
+  return result.rows;
+}
+
 // ─── Message Formatters ───────────────────────────────────────────
 
 function bold(text: string): string {
@@ -210,20 +341,125 @@ function fmtAlerts(overdue: PendingPaymentInfo[]): string {
   return parts.join('\n');
 }
 
+function fmtBranches(rows: BranchInfo[]): string {
+  if (rows.length === 0) return 'No branches found';
+  const parts = [bold('Branch Overview')];
+  for (const b of rows) {
+    parts.push(`\n${bold(b.branch_name)}`);
+    parts.push(`Students: ${b.active_students} active`);
+    parts.push(`Seats: ${b.occupied_seats}/${b.total_seats} occupied`);
+    parts.push(`Revenue: Rs ${b.monthly_revenue.toLocaleString('en-IN')}`);
+  }
+  return parts.join('\n');
+}
+
+function fmtToday(info: TodayInfo): string {
+  const lines = [
+    bold("Today's Activity"),
+    '',
+    `Attendance: ${info.attendance_count} students`,
+    `New registrations: ${info.new_students}`,
+    `Revenue collected: Rs ${info.revenue_collected.toLocaleString('en-IN')}`,
+    `Pending payments logged: ${info.pending_payments}`,
+  ];
+  return lines.join('\n');
+}
+
+function fmtStudent(rows: StudentSearchResult[]): string {
+  if (rows.length === 0) return 'No students found';
+  const parts = [bold(`Students (${rows.length})`)];
+  for (const s of rows) {
+    parts.push(`\n${s.name} (${s.student_id})`);
+    parts.push(`Branch: ${s.branch_name} | ${s.is_active ? 'Active' : 'Inactive'}`);
+    parts.push(`Plan: ${s.study_plan ?? 'N/A'} | Fee: Rs ${s.monthly_fee}`);
+    parts.push(`Seat: ${s.seat_number ?? 'Not assigned'}${s.floor_name ? ` (${s.floor_name})` : ''}`);
+    parts.push(`Joined: ${s.joining_date}`);
+  }
+  return parts.join('\n');
+}
+
+function fmtRevenue(r: RevenueInfo): string {
+  const lines = [
+    bold('Revenue Report'),
+    '',
+    `Today: Rs ${r.today.toLocaleString('en-IN')}`,
+    `This week: Rs ${r.this_week.toLocaleString('en-IN')}`,
+    `This month: Rs ${r.this_month.toLocaleString('en-IN')}`,
+    `This year: Rs ${r.this_year.toLocaleString('en-IN')}`,
+  ];
+  return lines.join('\n');
+}
+
+function fmtNotifications(rows: NotificationItem[]): string {
+  if (rows.length === 0) return 'No notifications';
+  const parts = [bold('Recent Notifications')];
+  for (const n of rows) {
+    const icon = n.severity === 'critical' ? '[CRIT]' : n.severity === 'warning' ? '[WARN]' : '[INFO]';
+    parts.push(`\n${icon} ${bold(n.title)}`);
+    parts.push(`${n.description}`);
+    parts.push(`${n.branch_name ?? 'All'} \u00B7 ${n.created_at}`);
+  }
+  return parts.join('\n');
+}
+
+function fmtBookings(rows: BookingInfo[]): string {
+  if (rows.length === 0) return 'No active seat bookings';
+  const parts = [bold(`Active Bookings (${rows.length})`)];
+  for (const b of rows) {
+    parts.push(`\n${b.student_name} (${b.student_id})`);
+    parts.push(`Seat: #${b.seat_number} | ${b.branch_name}`);
+    parts.push(`${b.start_date} \u2192 ${b.end_date}`);
+  }
+  return parts.join('\n');
+}
+
+function fmtDefaulters(rows: DefaulterInfo[]): string {
+  if (rows.length === 0) return 'No defaulters';
+  const parts = [bold(`Top Defaulters (${rows.length})`)];
+  for (const d of rows) {
+    parts.push(`\n${d.name} (${d.student_id})`);
+    parts.push(`Due: Rs ${Number(d.total_due).toLocaleString('en-IN')} (${d.overdue_count} payments)`);
+    parts.push(`${d.branch_name}`);
+  }
+  return parts.join('\n');
+}
+
+function getMainKeyboard() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: 'Summary', callback_data: 'summary' },
+          { text: 'Payments', callback_data: 'payments' },
+          { text: 'Seats', callback_data: 'seats' },
+        ],
+        [
+          { text: 'Alerts', callback_data: 'alerts' },
+          { text: 'Revenue', callback_data: 'revenue' },
+          { text: 'Branches', callback_data: 'branches' },
+        ],
+        [
+          { text: 'Today', callback_data: 'today' },
+          { text: 'Help', callback_data: 'help' },
+        ],
+      ],
+    },
+  };
+}
+
 // ─── Bot ───────────────────────────────────────────
 
-async function respond(chatId: number | string, text: string): Promise<void> {
+async function respond(chatId: number | string, text: string, extra: Record<string, any> = {}): Promise<void> {
   if (!bot) {
     console.error('Bot not initialized');
     return;
   }
   try {
-    await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+    await bot.sendMessage(chatId, text, { parse_mode: 'HTML', ...extra });
   } catch (error: any) {
     console.error('Telegram sendMessage error:', error?.message ?? error);
-    // Fallback: send without formatting
     try {
-      await bot.sendMessage(chatId, text);
+      await bot.sendMessage(chatId, text, extra);
     } catch (e2: any) {
       console.error('Telegram sendMessage fallback also failed:', e2?.message ?? e2);
     }
@@ -261,10 +497,13 @@ async function handleCommand(chatId: number, text: string): Promise<void> {
   const cmd = text.split(' ')[0]?.toLowerCase() ?? '';
 
   try {
+    const args = text.split(' ').slice(1).join(' ');
+
     switch (cmd) {
       case '/start':
         await respond(chatId,
-          `Hello! I send library updates here.\n\nCommands:\n/summary — quick overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat status\n/alerts — current issues\n/help — all commands`
+          `Hello! I send library updates here.\n\nCommands:\n/summary — quick overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat status\n/alerts — current issues\n/branches — branch-wise snapshot\n/today — today\'s activity\n/revenue — revenue breakdown\n/bookings — active seat bookings\n/defaulters — top defaulters\n/find <name> — search student\n/notifications — recent notifications\n/help — all commands`,
+          getMainKeyboard()
         );
         break;
 
@@ -298,9 +537,56 @@ async function handleCommand(chatId: number, text: string): Promise<void> {
         break;
       }
 
+      case '/branches': {
+        const branches = await getBranchSummary();
+        await respond(chatId, fmtBranches(branches));
+        break;
+      }
+
+      case '/today': {
+        const info = await getTodayInfo();
+        await respond(chatId, fmtToday(info));
+        break;
+      }
+
+      case '/revenue': {
+        const revenue = await getRevenue();
+        await respond(chatId, fmtRevenue(revenue));
+        break;
+      }
+
+      case '/bookings': {
+        const bookings = await getActiveBookings();
+        await respond(chatId, fmtBookings(bookings));
+        break;
+      }
+
+      case '/defaulters': {
+        const defaulters = await getDefaulters();
+        await respond(chatId, fmtDefaulters(defaulters));
+        break;
+      }
+
+      case '/notifications': {
+        const notifications = await getNotifications();
+        await respond(chatId, fmtNotifications(notifications));
+        break;
+      }
+
+      case '/find': {
+        if (!args) {
+          await respond(chatId, 'Usage: /find <student name or ID>');
+          break;
+        }
+        const students = await findStudent(args);
+        await respond(chatId, fmtStudent(students));
+        break;
+      }
+
       case '/help':
         await respond(chatId,
-          `Commands:\n/summary — daily overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat availability\n/alerts — issues needing attention\n/help — this message`
+          `Commands:\n/summary — daily overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat availability\n/alerts — issues needing attention\n/branches — branch-wise snapshot\n/today — today\'s activity\n/revenue — revenue breakdown\n/bookings — active seat bookings\n/defaulters — top defaulters\n/find <name> — search student\n/notifications — recent notifications\n/help — this message`,
+          getMainKeyboard()
         );
         break;
 
@@ -347,6 +633,19 @@ export async function startTelegramBot(): Promise<void> {
       }
     });
 
+    bot.on('callback_query', async (query: any) => {
+      try {
+        const chatId = query.message?.chat?.id;
+        const data = query.data ?? '';
+        if (!chatId || !data) return;
+        if (!isAuthorized(chatId)) return;
+        await bot.answerCallbackQuery(query.id);
+        await handleCommand(chatId, `/${data}`);
+      } catch (error: any) {
+        console.error('Callback query error:', error?.message ?? error);
+      }
+    });
+
     bot.on('polling_error', (error: any) => {
       const msg = error?.message ?? String(error);
       if (msg.includes('404')) {
@@ -365,6 +664,13 @@ export async function startTelegramBot(): Promise<void> {
         { command: 'overdue', description: 'Overdue payments' },
         { command: 'seats', description: 'Seat availability' },
         { command: 'alerts', description: 'Issues needing attention' },
+        { command: 'branches', description: 'Branch-wise snapshot' },
+        { command: 'today', description: "Today's activity" },
+        { command: 'revenue', description: 'Revenue breakdown' },
+        { command: 'bookings', description: 'Active seat bookings' },
+        { command: 'defaulters', description: 'Top defaulters' },
+        { command: 'find', description: 'Search student by name' },
+        { command: 'notifications', description: 'Recent notifications' },
         { command: 'help', description: 'Show all commands' },
       ]);
     } catch {}
