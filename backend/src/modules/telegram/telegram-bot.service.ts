@@ -455,7 +455,18 @@ async function processPaymentConfirm(
   paymentId: number,
   isConfirm: boolean,
   chatId: number | string,
-): Promise<void> {
+): Promise<{ processed: boolean; status?: string }> {
+  const check = await pool.query(`SELECT id, status FROM fee_payments WHERE id = $1`, [paymentId]);
+  if (check.rows.length === 0) {
+    await respond(chatId, `Payment #${paymentId} not found`);
+    return { processed: false };
+  }
+  const currentStatus = check.rows[0].status;
+  if (currentStatus !== 'pending') {
+    await respond(chatId, `Payment #${paymentId} is already ${currentStatus}`);
+    return { processed: false, status: currentStatus };
+  }
+
   if (isConfirm) {
     await pool.query(
       `UPDATE fee_payments SET status = 'paid', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
@@ -512,6 +523,7 @@ async function processPaymentConfirm(
   }
 
   await respond(chatId, `Payment #${paymentId} ${isConfirm ? 'confirmed and receipt logged' : 'rejected'}`);
+  return { processed: true };
 }
 
 // ─── Bot ───────────────────────────────────────────
@@ -655,17 +667,7 @@ async function handleCommand(chatId: number, text: string): Promise<void> {
           await respond(chatId, 'Usage: /confirm <paymentId>');
           break;
         }
-        const paymentId = Number(args);
-        const check = await pool.query(`SELECT id, status FROM fee_payments WHERE id = $1`, [paymentId]);
-        if (check.rows.length === 0) {
-          await respond(chatId, `Payment #${paymentId} not found`);
-          break;
-        }
-        if (check.rows[0].status !== 'pending') {
-          await respond(chatId, `Payment #${paymentId} is already ${check.rows[0].status}`);
-          break;
-        }
-        await processPaymentConfirm(paymentId, true, chatId);
+        await processPaymentConfirm(Number(args), true, chatId);
         break;
       }
 
@@ -741,7 +743,12 @@ export async function startTelegramBot(): Promise<void> {
           const parts = data.split('_');
           const paymentId = Number(parts[parts.length - 1]);
           const isConfirm = data.startsWith('confirm_payment_');
-          await processPaymentConfirm(paymentId, isConfirm, chatId);
+          const result = await processPaymentConfirm(paymentId, isConfirm, chatId);
+          if (result.processed) {
+            try {
+              await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
+            } catch {}
+          }
           return;
         }
 
