@@ -11,11 +11,12 @@ jobs:
 
     steps:
       - name: Deploy on VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          retry: 2
           script: |
             cd ~/apps/library-management-system
             git pull
@@ -59,13 +60,16 @@ jobs:
           name: desktop-release
           path: release
 
-      - name: Setup SSH key
+      - name: Setup SSH key & Upload to VPS
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Upload to VPS
-        run: |
-          scp -r release/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/apps/library-management-system/releases/
+          for i in 1 2 3; do
+            ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts && break
+            echo "ssh-keyscan attempt $i failed, retrying..." && sleep 3
+          done
+          for i in 1 2 3; do
+            scp -r release/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/apps/library-management-system/releases/ && break
+            echo "SCP attempt $i failed, retrying..." && sleep 3
+          done
