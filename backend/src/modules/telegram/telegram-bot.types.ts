@@ -58,7 +58,7 @@ export interface StudentSearchResult {
   is_active: boolean;
   study_plan: string | null;
   monthly_fee: number;
-  joining_date: string;
+  registration_date: string;
   branch_name: string;
   seat_number: string | null;
   floor_name: string | null;

@@ -155,7 +155,7 @@ async function getTodayInfo(): Promise<TodayInfo> {
   const result = await pool.query(`
     SELECT
       (SELECT COUNT(*) FROM attendance WHERE attendance_date = CURRENT_DATE AND entry_time IS NOT NULL)::int AS attendance_count,
-      (SELECT COUNT(*) FROM students WHERE DATE(joining_date) = CURRENT_DATE)::int AS new_students,
+      (SELECT COUNT(*) FROM students WHERE registration_date = CURRENT_DATE)::int AS new_students,
       (SELECT COALESCE(SUM(amount), 0) FROM fee_payments WHERE status = 'paid' AND DATE(payment_date) = CURRENT_DATE) AS revenue_collected,
       (SELECT COUNT(*) FROM fee_payments WHERE status = 'pending' AND DATE(payment_date) = CURRENT_DATE)::int AS pending_payments
   `);
@@ -175,7 +175,7 @@ async function findStudent(query: string): Promise<StudentSearchResult[]> {
       s.is_active,
       s.study_plan,
       s.monthly_fee,
-      TO_CHAR(s.joining_date, 'DD Mon YYYY') AS joining_date,
+      TO_CHAR(s.registration_date, 'DD Mon YYYY') AS registration_date,
       b.name AS branch_name,
       st.seat_number,
       st.floor_name
@@ -373,7 +373,7 @@ function fmtStudent(rows: StudentSearchResult[]): string {
     parts.push(`Branch: ${s.branch_name} | ${s.is_active ? 'Active' : 'Inactive'}`);
     parts.push(`Plan: ${s.study_plan ?? 'N/A'} | Fee: Rs ${s.monthly_fee}`);
     parts.push(`Seat: ${s.seat_number ?? 'Not assigned'}${s.floor_name ? ` (${s.floor_name})` : ''}`);
-    parts.push(`Joined: ${s.joining_date}`);
+    parts.push(`Joined: ${s.registration_date}`);
   }
   return parts.join('\n');
 }
