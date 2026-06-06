@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import pool from '../../config/db.ts';
 import type {
+  BulkCreateSeatsDTO,
   CreateSeatBookingDTO,
   ReleaseSeatBookingDTO,
   SeatAvailabilityStatus,
@@ -9,6 +10,7 @@ import type {
   SeatEligibleStudent,
   SeatQueryFilters,
   SeatSnapshot,
+  UpdateSeatDTO,
 } from './seats.types.ts';
 
 type QueryExecutor = Pick<PoolClient, 'query'> | typeof pool;
@@ -107,59 +109,99 @@ async function getSeatBookingById(
 export async function getSeats(filters: SeatQueryFilters): Promise<SeatSnapshot[]> {
   await expireOutdatedBookings(pool);
 
-  const params: Array<number | string> = [filters.booking_month, filters.booking_year];
-  let query = `
-    WITH month_bookings AS (
+  const params: Array<number | string> = [];
+  const hasPeriod = filters.booking_month != null && filters.booking_year != null;
+
+  let query: string;
+
+  if (hasPeriod) {
+    params.push(filters.booking_month!, filters.booking_year!);
+    query = `
+      WITH month_bookings AS (
+        SELECT
+          sb.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY sb.seat_id
+            ORDER BY
+              CASE sb.status
+                WHEN 'active' THEN 0
+                ELSE 1
+              END,
+              sb.assigned_at DESC
+          ) AS booking_rank
+        FROM seat_bookings sb
+        WHERE sb.booking_month = $1
+          AND sb.booking_year = $2
+          AND sb.status IN ('reserved', 'active')
+      )
       SELECT
-        sb.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY sb.seat_id
-          ORDER BY
-            CASE sb.status
-              WHEN 'active' THEN 0
-              ELSE 1
-            END,
-            sb.assigned_at DESC
-        ) AS booking_rank
-      FROM seat_bookings sb
-      WHERE sb.booking_month = $1
-        AND sb.booking_year = $2
-        AND sb.status IN ('reserved', 'active')
-    )
-    SELECT
-      s.id,
-      s.branch_id,
-      s.seat_number,
-      s.floor_name,
-      s.section,
-      s.status AS seat_status,
-      s.is_available,
-      s.assigned_to_student_id,
-      s.assigned_date,
-      mb.id AS booking_id,
-      mb.student_id AS booked_student_id,
-      st.name AS booked_student_name,
-      st.student_id AS booked_student_code,
-      mb.status AS booking_status,
-      mb.booking_month,
-      mb.booking_year,
-      mb.start_date,
-      mb.end_date,
-      mb.notes AS booking_notes,
-      CASE
-        WHEN s.status = 'maintenance' THEN 'maintenance'
-        WHEN s.status = 'inactive' THEN 'inactive'
-        WHEN mb.id IS NOT NULL THEN 'booked'
-        ELSE 'available'
-      END AS availability_status
-    FROM seats s
-    LEFT JOIN month_bookings mb
-      ON mb.seat_id = s.id
-     AND mb.booking_rank = 1
-    LEFT JOIN students st
-      ON st.id = mb.student_id
-    WHERE 1 = 1
-  `;
+        s.id,
+        s.branch_id,
+        s.seat_number,
+        s.floor_name,
+        s.section,
+        s.status AS seat_status,
+        s.is_available,
+        s.assigned_to_student_id,
+        s.assigned_date,
+        mb.id AS booking_id,
+        mb.student_id AS booked_student_id,
+        st.name AS booked_student_name,
+        st.student_id AS booked_student_code,
+        mb.status AS booking_status,
+        mb.booking_month,
+        mb.booking_year,
+        mb.start_date,
+        mb.end_date,
+        mb.notes AS booking_notes,
+        CASE
+          WHEN s.status = 'maintenance' THEN 'maintenance'
+          WHEN s.status = 'inactive' THEN 'inactive'
+          WHEN mb.id IS NOT NULL THEN 'booked'
+          ELSE 'available'
+        END AS availability_status
+      FROM seats s
+      LEFT JOIN month_bookings mb
+        ON mb.seat_id = s.id
+       AND mb.booking_rank = 1
+      LEFT JOIN students st
+        ON st.id = mb.student_id
+      WHERE 1 = 1
+    `;
+  } else {
+    query = `
+      SELECT
+        s.id,
+        s.branch_id,
+        s.seat_number,
+        s.floor_name,
+        s.section,
+        s.status AS seat_status,
+        s.is_available,
+        s.assigned_to_student_id,
+        s.assigned_date,
+        NULL AS booking_id,
+        s.assigned_to_student_id AS booked_student_id,
+        st.name AS booked_student_name,
+        st.student_id AS booked_student_code,
+        NULL AS booking_status,
+        NULL AS booking_month,
+        NULL AS booking_year,
+        NULL AS start_date,
+        NULL AS end_date,
+        NULL AS booking_notes,
+        CASE
+          WHEN s.status = 'maintenance' THEN 'maintenance'
+          WHEN s.status = 'inactive' THEN 'inactive'
+          WHEN s.assigned_to_student_id IS NOT NULL THEN 'booked'
+          ELSE 'available'
+        END AS availability_status
+      FROM seats s
+      LEFT JOIN students st
+        ON st.id = s.assigned_to_student_id
+      WHERE 1 = 1
+    `;
+  }
 
   if (filters.branch_id != null) {
     params.push(filters.branch_id);
@@ -172,34 +214,247 @@ export async function getSeats(filters: SeatQueryFilters): Promise<SeatSnapshot[
   }
 
   if (filters.availability) {
+    const idx = params.length + 1;
     params.push(filters.availability);
-    query += `
-      AND (
-        CASE
-          WHEN s.status = 'maintenance' THEN 'maintenance'
-          WHEN s.status = 'inactive' THEN 'inactive'
-          WHEN mb.id IS NOT NULL THEN 'booked'
-          ELSE 'available'
-        END
-      ) = $${params.length}
-    `;
+    query += hasPeriod
+      ? `
+        AND (
+          CASE
+            WHEN s.status = 'maintenance' THEN 'maintenance'
+            WHEN s.status = 'inactive' THEN 'inactive'
+            WHEN mb.id IS NOT NULL THEN 'booked'
+            ELSE 'available'
+          END
+        ) = $${idx}
+      `
+      : `
+        AND (
+          CASE
+            WHEN s.status = 'maintenance' THEN 'maintenance'
+            WHEN s.status = 'inactive' THEN 'inactive'
+            WHEN s.assigned_to_student_id IS NOT NULL THEN 'booked'
+            ELSE 'available'
+          END
+        ) = $${idx}
+      `;
   }
 
   if (filters.search?.trim()) {
     params.push(`%${filters.search.trim()}%`);
+    const idx = params.length;
     query += `
       AND (
-        s.seat_number ILIKE $${params.length}
-        OR COALESCE(st.name, '') ILIKE $${params.length}
-        OR COALESCE(st.student_id, '') ILIKE $${params.length}
+        s.seat_number ILIKE $${idx}
+        OR COALESCE(st.name, '') ILIKE $${idx}
+        OR COALESCE(st.student_id, '') ILIKE $${idx}
       )
     `;
   }
 
-  query += ' ORDER BY s.branch_id, s.seat_number';
+  query += ' ORDER BY s.branch_id, CAST(s.seat_number AS INTEGER), s.seat_number';
 
   const result = await pool.query<SeatSnapshot>(query, params);
   return result.rows;
+}
+
+export async function bulkCreateSeats(
+  data: BulkCreateSeatsDTO,
+): Promise<{ created: number }> {
+  const { branch_id, start_number, count, floor_name } = data;
+
+  const branchResult = await pool.query('SELECT id FROM branches WHERE id = $1', [branch_id]);
+  if (branchResult.rows.length === 0) {
+    throw new Error('Branch not found');
+  }
+
+  const values: string[] = [];
+  const paramValues: Array<number | string> = [];
+
+  for (let i = 0; i < count; i++) {
+    const seatNum = start_number + i;
+    const baseIdx = paramValues.length + 1;
+    values.push(`($${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3})`);
+    paramValues.push(branch_id, String(seatNum), floor_name ?? '', 'active');
+  }
+
+  const query = `
+    INSERT INTO seats (branch_id, seat_number, floor_name, status)
+    VALUES ${values.join(', ')}
+    ON CONFLICT DO NOTHING
+    RETURNING id
+  `;
+
+  const result = await pool.query(query, paramValues);
+  return { created: result.rows.length };
+}
+
+async function getSeatSnapshotById(
+  seatId: number,
+  branchId?: number,
+): Promise<SeatSnapshot | null> {
+  const params: number[] = [seatId];
+  let query = `
+    SELECT
+      s.id, s.branch_id, s.seat_number, s.floor_name, s.section,
+      s.status AS seat_status, s.is_available,
+      s.assigned_to_student_id, s.assigned_date,
+      NULL AS booking_id,
+      s.assigned_to_student_id AS booked_student_id,
+      st.name AS booked_student_name,
+      st.student_id AS booked_student_code,
+      NULL AS booking_status,
+      NULL AS booking_month, NULL AS booking_year,
+      NULL AS start_date, NULL AS end_date, NULL AS booking_notes,
+      CASE
+        WHEN s.status = 'maintenance' THEN 'maintenance'
+        WHEN s.status = 'inactive' THEN 'inactive'
+        WHEN s.assigned_to_student_id IS NOT NULL THEN 'booked'
+        ELSE 'available'
+      END AS availability_status
+    FROM seats s
+    LEFT JOIN students st ON st.id = s.assigned_to_student_id
+    WHERE s.id = $1
+  `;
+
+  if (branchId != null) {
+    params.push(branchId);
+    query += ` AND s.branch_id = $2`;
+  }
+
+  query += ' LIMIT 1';
+  const result = await pool.query<SeatSnapshot>(query, params);
+  return result.rows[0] ?? null;
+}
+
+export async function updateSeat(
+  seatId: number,
+  data: UpdateSeatDTO,
+  branchId?: number,
+): Promise<SeatSnapshot | null> {
+  const setClauses: string[] = [];
+  const params: Array<number | string | null> = [];
+
+  if (data.seat_number !== undefined) {
+    params.push(data.seat_number);
+    setClauses.push(`seat_number = $${params.length}`);
+  }
+
+  if (data.floor_name !== undefined) {
+    params.push(data.floor_name);
+    setClauses.push(`floor_name = $${params.length}`);
+  }
+
+  if (data.status !== undefined) {
+    params.push(data.status);
+    setClauses.push(`status = $${params.length}`);
+  }
+
+  if (setClauses.length === 0) {
+    throw new Error('No fields to update');
+  }
+
+  params.push(seatId);
+  let whereClause = `WHERE id = $${params.length}`;
+
+  if (branchId != null) {
+    params.push(branchId);
+    whereClause += ` AND branch_id = $${params.length}`;
+  }
+
+  const result = await pool.query(
+    `UPDATE seats SET ${setClauses.join(', ')} ${whereClause}`,
+    params,
+  );
+
+  if (result.rowCount === 0) return null;
+  return getSeatSnapshotById(seatId, branchId);
+}
+
+export async function assignSeat(
+  seatId: number,
+  studentId: number,
+  assignedBy: number,
+  branchId?: number,
+): Promise<SeatSnapshot> {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const seatParams: number[] = [seatId];
+    let seatQuery = `SELECT id, branch_id, status FROM seats WHERE id = $1`;
+
+    if (branchId != null) {
+      seatParams.push(branchId);
+      seatQuery += ` AND branch_id = $2`;
+    }
+
+    seatQuery += ' FOR UPDATE';
+
+    const seatResult = await client.query<{
+      id: number; branch_id: number; status: string;
+    }>(seatQuery, seatParams);
+
+    const seat = seatResult.rows[0];
+    if (!seat) throw new Error('Seat not found');
+    if (seat.status !== 'active') throw new Error('Only active seats can be assigned');
+
+    const studentResult = await client.query<{
+      id: number; branch_id: number; is_active: boolean; name: string;
+    }>(
+      'SELECT id, branch_id, is_active, name FROM students WHERE id = $1 FOR UPDATE',
+      [studentId],
+    );
+
+    const student = studentResult.rows[0];
+    if (!student) throw new Error('Student not found');
+    if (!student.is_active) throw new Error('Only active students can be assigned seats');
+    if (seat.branch_id !== student.branch_id) throw new Error('Seat and student must belong to the same branch');
+
+    const existingResult = await client.query(
+      `SELECT id FROM seats WHERE assigned_to_student_id = $1 AND id != $2 AND status = 'active' LIMIT 1`,
+      [studentId, seatId],
+    );
+    if (existingResult.rows.length > 0) {
+      throw new Error('This student is already assigned to another seat');
+    }
+
+    await client.query(
+      `UPDATE seats SET assigned_to_student_id = $1, assigned_date = CURRENT_DATE WHERE id = $2`,
+      [studentId, seatId],
+    );
+
+    await client.query('COMMIT');
+
+    const updated = await getSeatSnapshotById(seatId, branchId);
+    if (!updated) throw new Error('Seat not found after assignment');
+    return updated;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function unassignSeat(
+  seatId: number,
+  branchId?: number,
+): Promise<SeatSnapshot> {
+  const params: number[] = [seatId];
+  let query = `UPDATE seats SET assigned_to_student_id = NULL, assigned_date = NULL WHERE id = $1`;
+
+  if (branchId != null) {
+    params.push(branchId);
+    query += ` AND branch_id = $2`;
+  }
+
+  const result = await pool.query(query, params);
+  if (result.rowCount === 0) throw new Error('Seat not found');
+
+  const updated = await getSeatSnapshotById(seatId, branchId);
+  if (!updated) throw new Error('Seat not found after unassignment');
+  return updated;
 }
 
 export async function getEligibleStudents(

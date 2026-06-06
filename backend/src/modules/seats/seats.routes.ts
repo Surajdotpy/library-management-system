@@ -13,6 +13,10 @@ router.get('/eligible-students', seatsController.getEligibleStudents);
 router.get('/bookings', seatsController.getSeatBookings);
 router.post('/bookings', seatsController.createSeatBooking);
 router.patch('/bookings/:bookingId/release', seatsController.releaseSeatBooking);
+router.post('/bulk', seatsController.bulkCreate);
+router.patch('/:seatId/assign', seatsController.assignSeat);
+router.patch('/:seatId/unassign', seatsController.unassignSeat);
+router.patch('/:seatId', seatsController.updateSeat);
 router.get('/', seatsController.getSeats);
 
 export default router;

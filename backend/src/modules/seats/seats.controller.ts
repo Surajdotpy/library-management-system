@@ -7,10 +7,14 @@ import {
 } from '../auth/auth.authorization.ts';
 import * as seatsService from './seats.service.ts';
 import type {
+  AssignSeatDTO,
+  BulkCreateSeatsDTO,
   CreateSeatBookingDTO,
   ReleaseSeatBookingDTO,
   SeatAvailabilityStatus,
+  SeatQueryFilters,
   SeatSection,
+  UpdateSeatDTO,
 } from './seats.types.ts';
 
 const VALID_SECTIONS = new Set<SeatSection>([
@@ -85,14 +89,18 @@ function resolveBookingPeriod(req: AuthRequest): { month: number; year: number }
   return { month, year };
 }
 
+function resolveOptionalBookingPeriod(req: AuthRequest): { month: number; year: number } | null {
+  const hasMonth = typeof req.query.month === 'string' && req.query.month.trim() !== '';
+  const hasYear = typeof req.query.year === 'string' && req.query.year.trim() !== '';
+
+  if (!hasMonth && !hasYear) return null;
+
+  return resolveBookingPeriod(req);
+}
+
 export async function getSeats(req: AuthRequest, res: Response) {
   try {
-    const period = resolveBookingPeriod(req);
-
-    if (!period) {
-      return badRequest(res, 'A valid month and year are required');
-    }
-
+    const period = resolveOptionalBookingPeriod(req);
     const requestedBranchId = parseBranchId(req.query.branch_id);
 
     if (Number.isNaN(requestedBranchId)) {
@@ -118,9 +126,8 @@ export async function getSeats(req: AuthRequest, res: Response) {
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
     const user = requireAuthenticatedUser(req.user);
     const branchId = resolveAuthorizedBranchId(user, requestedBranchId);
-    const filters = {
-      booking_month: period.month,
-      booking_year: period.year,
+    const filters: SeatQueryFilters = {
+      ...(period ? { booking_month: period.month, booking_year: period.year } : {}),
       ...(branchId != null ? { branch_id: branchId } : {}),
       ...(section ? { section: section as SeatSection } : {}),
       ...(availability
@@ -379,5 +386,131 @@ export async function releaseSeatBooking(req: AuthRequest, res: Response) {
       success: false,
       error: 'Failed to release seat booking',
     });
+  }
+}
+
+export async function bulkCreate(req: AuthRequest, res: Response) {
+  try {
+    const user = requireAuthenticatedUser(req.user);
+    const { branch_id, start_number, count, floor_name } = req.body as Partial<BulkCreateSeatsDTO>;
+
+    if (!branch_id || !Number.isInteger(branch_id) || branch_id <= 0) {
+      return badRequest(res, 'A valid branch_id is required');
+    }
+
+    const startNum = start_number ?? 0;
+    const seatCount = count ?? 0;
+
+    if (!Number.isInteger(startNum) || startNum < 1) {
+      return badRequest(res, 'start_number must be a positive integer');
+    }
+
+    if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 1000) {
+      return badRequest(res, 'count must be between 1 and 1000');
+    }
+
+    const result = await seatsService.bulkCreateSeats({
+      branch_id,
+      start_number: startNum,
+      count: seatCount,
+      ...(floor_name?.trim() ? { floor_name: floor_name.trim() } : {}),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `${result.created} seats created`,
+      data: result,
+    });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
+    console.error('Bulk create seats error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create seats' });
+  }
+}
+
+export async function updateSeat(req: AuthRequest, res: Response) {
+  try {
+    const seatId = Number.parseInt(req.params.seatId as string, 10);
+    if (Number.isNaN(seatId)) return badRequest(res, 'Invalid seat ID');
+
+    const user = requireAuthenticatedUser(req.user);
+    const branchId = resolveAuthorizedBranchId(user);
+    const data = req.body as Partial<UpdateSeatDTO>;
+
+    const seat = await seatsService.updateSeat(seatId, data, branchId);
+    if (!seat) return badRequest(res, 'Seat not found');
+
+    res.status(200).json({ success: true, data: seat });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
+    console.error('Update seat error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update seat' });
+  }
+}
+
+export async function assignSeat(req: AuthRequest, res: Response) {
+  try {
+    const seatId = Number.parseInt(req.params.seatId as string, 10);
+    if (Number.isNaN(seatId)) return badRequest(res, 'Invalid seat ID');
+
+    const user = requireAuthenticatedUser(req.user);
+    const { student_id } = req.body as Partial<AssignSeatDTO>;
+
+    if (!student_id || !Number.isInteger(student_id) || student_id <= 0) {
+      return badRequest(res, 'A valid student_id is required');
+    }
+
+    const branchId = resolveAuthorizedBranchId(user);
+    const seat = await seatsService.assignSeat(seatId, student_id, user.userId, branchId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Seat assigned successfully',
+      data: seat,
+    });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
+    if (
+      error.message.includes('not found') ||
+      error.message.includes('Only active') ||
+      error.message.includes('same branch') ||
+      error.message.includes('already assigned')
+    ) {
+      return badRequest(res, error.message);
+    }
+    console.error('Assign seat error:', error);
+    res.status(500).json({ success: false, error: 'Failed to assign seat' });
+  }
+}
+
+export async function unassignSeat(req: AuthRequest, res: Response) {
+  try {
+    const seatId = Number.parseInt(req.params.seatId as string, 10);
+    if (Number.isNaN(seatId)) return badRequest(res, 'Invalid seat ID');
+
+    const user = requireAuthenticatedUser(req.user);
+    const branchId = resolveAuthorizedBranchId(user);
+    const seat = await seatsService.unassignSeat(seatId, branchId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Seat unassigned successfully',
+      data: seat,
+    });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
+    if (error.message.includes('not found')) {
+      return badRequest(res, error.message);
+    }
+    console.error('Unassign seat error:', error);
+    res.status(500).json({ success: false, error: 'Failed to unassign seat' });
   }
 }

@@ -72,9 +72,30 @@ export interface SeatBooking {
 }
 
 export interface SeatQueryOptions {
-  month: number;
-  year: number;
+  month?: number;
+  year?: number;
   branch_id?: number;
+}
+
+export interface BulkCreateSeatsRequest {
+  branch_id: number;
+  start_number: number;
+  count: number;
+  floor_name?: string;
+}
+
+export interface UpdateSeatRequest {
+  seat_number?: string;
+  floor_name?: string | null;
+  status?: SeatLifecycleStatus;
+}
+
+export interface AssignSeatRequest {
+  student_id: number;
+}
+
+export interface BulkCreateResult {
+  created: number;
 }
 
 export interface SeatBookingsQueryOptions extends SeatQueryOptions {

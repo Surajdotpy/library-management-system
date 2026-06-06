@@ -85,10 +85,27 @@ export interface ReleaseSeatBookingDTO {
 }
 
 export interface SeatQueryFilters {
-  booking_month: number;
-  booking_year: number;
+  booking_month?: number;
+  booking_year?: number;
   branch_id?: number;
   section?: SeatSection;
   availability?: SeatAvailabilityStatus;
   search?: string;
+}
+
+export interface BulkCreateSeatsDTO {
+  branch_id: number;
+  start_number: number;
+  count: number;
+  floor_name?: string;
+}
+
+export interface UpdateSeatDTO {
+  seat_number?: string;
+  floor_name?: string | null;
+  status?: SeatLifecycleStatus;
+}
+
+export interface AssignSeatDTO {
+  student_id: number;
 }

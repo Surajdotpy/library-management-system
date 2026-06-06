@@ -6,336 +6,207 @@ import {
   Armchair,
   CalendarDays,
   Loader2,
+  Plus,
   RefreshCcw,
   Search,
   TicketCheck,
+  Trash2,
   UserPlus,
   Users,
   Wrench,
 } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Badge, Button, Card, Input } from '@/components/ui';
-import { branchesApi, seatsApi } from '@/lib/api';
+import { Badge, Button, Card } from '@/components/ui';
+import { branchesApi, seatsApi, studentsApi } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth/session';
-import type {
-  Branch,
-  CreateSeatBookingRequest,
-  Seat,
-  SeatAvailabilityStatus,
-  SeatBooking,
-  SeatEligibleStudent,
-  SeatSection,
-} from '@/types';
+import type { Branch, Seat, SeatBooking, Student } from '@/types';
 
 const MONTHS = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
+  { value: 1, label: 'January' }, { value: 2, label: 'February' }, { value: 3, label: 'March' },
+  { value: 4, label: 'April' }, { value: 5, label: 'May' }, { value: 6, label: 'June' },
+  { value: 7, label: 'July' }, { value: 8, label: 'August' }, { value: 9, label: 'September' },
+  { value: 10, label: 'October' }, { value: 11, label: 'November' }, { value: 12, label: 'December' },
 ] as const;
 
-const SECTION_FILTERS: Array<'all' | SeatSection> = ['all', 'general', 'ac', 'non_ac', 'silent_zone'];
-const AVAILABILITY_FILTERS: Array<'all' | SeatAvailabilityStatus> = [
-  'all',
-  'available',
-  'booked',
-  'maintenance',
-  'inactive',
-];
+const AVAILABILITY_FILTERS = ['all', 'available', 'booked', 'maintenance', 'inactive'] as const;
 
-function getApiErrorMessage(error: unknown, fallbackMessage: string): string {
+function getApiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
-
     if (data && typeof data === 'object') {
-      const message =
-        'error' in data ? data.error : 'message' in data ? data.message : null;
-
-      if (typeof message === 'string' && message.trim()) {
-        return message;
-      }
+      const msg = 'error' in data ? data.error : 'message' in data ? data.message : null;
+      if (typeof msg === 'string' && msg.trim()) return msg;
     }
   }
-
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  return fallbackMessage;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
 }
 
-function formatDate(value: string | null): string {
-  if (!value) {
-    return '-';
-  }
-
-  return new Date(value).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function badgeVariantForAvailability(status: SeatAvailabilityStatus) {
-  if (status === 'available') return 'success';
-  if (status === 'booked') return 'info';
-  if (status === 'maintenance') return 'warning';
-  return 'danger';
-}
-
-function badgeVariantForBooking(status: SeatBooking['status']) {
-  if (status === 'active') return 'success';
-  if (status === 'reserved') return 'info';
-  if (status === 'cancelled') return 'warning';
-  if (status === 'released') return 'default';
-  return 'danger';
+function badgeVariant(status: string) {
+  if (status === 'available') return 'success' as const;
+  if (status === 'booked') return 'info' as const;
+  if (status === 'maintenance') return 'warning' as const;
+  if (status === 'inactive') return 'danger' as const;
+  if (status === 'active') return 'success' as const;
+  if (status === 'reserved') return 'info' as const;
+  if (status === 'cancelled') return 'warning' as const;
+  return 'default' as const;
 }
 
 export default function SeatsPage() {
   const user = getStoredUser();
   const isSuperAdmin = user?.role === 'superadmin';
   const now = new Date();
+
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [branchId, setBranchId] = useState<number | ''>(isSuperAdmin ? '' : user?.branch_id ?? '');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [bookings, setBookings] = useState<SeatBooking[]>([]);
-  const [eligibleStudents, setEligibleStudents] = useState<SeatEligibleStudent[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [assigning, setAssigning] = useState(false);
-  const [releasingId, setReleasingId] = useState<number | null>(null);
+  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const [search, setSearch] = useState('');
-  const [sectionFilter, setSectionFilter] = useState<'all' | SeatSection>('all');
-  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | SeatAvailabilityStatus>('all');
-  const [form, setForm] = useState<CreateSeatBookingRequest>({
-    seat_id: 0,
-    student_id: 0,
-    booking_month: now.getMonth() + 1,
-    booking_year: now.getFullYear(),
-    notes: '',
-  });
+  const [availFilter, setAvailFilter] = useState<string>('all');
 
   const effectiveBranchId = branchId === '' ? undefined : branchId;
-  const isGlobalAssignmentMode = isSuperAdmin && branchId === '';
-  const branchName = branchId === ''
-    ? 'All Branches'
-    : branches.find((branch) => branch.id === branchId)?.name ?? 'My Branch';
 
   async function loadData() {
     setLoading(true);
     setError(null);
-
     try {
-      const [branchData, seatData, bookingData, eligibleData] = await Promise.all([
+      const [branchData, seatData, bookingData, studentData] = await Promise.all([
         branchesApi.getAll(),
-        seatsApi.getAll({ month, year, branch_id: effectiveBranchId }),
+        seatsApi.getAll({ branch_id: effectiveBranchId }),
         seatsApi.getBookings({ month, year, branch_id: effectiveBranchId, limit: 50 }),
-        seatsApi.getEligibleStudents({ month, year, branch_id: effectiveBranchId }),
+        studentsApi.getAll() as Promise<Student[]>,
       ]);
-
       setBranches(branchData);
       setSeats(seatData);
       setBookings(bookingData);
-      setEligibleStudents(eligibleData);
-    } catch (loadError) {
-      setError(getApiErrorMessage(loadError, 'Failed to load seat management data.'));
+      setStudents(studentData);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to load data'));
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    void loadData();
-  }, [month, year, branchId]);
-
-  useEffect(() => {
-    setForm((current) => ({
-      ...current,
-      booking_month: month,
-      booking_year: year,
-      seat_id: 0,
-      student_id: 0,
-    }));
-    setActionError(null);
-    setSuccessMessage(null);
-  }, [month, year, branchId]);
+  useEffect(() => { void loadData(); }, [month, year, branchId]);
 
   const filteredSeats = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    return seats.filter((seat) => {
-      const matchesSection = sectionFilter === 'all' || seat.section === sectionFilter;
-      const matchesAvailability =
-        availabilityFilter === 'all' || seat.availability_status === availabilityFilter;
-      const matchesSearch =
-        normalizedSearch.length === 0 ||
-        seat.seat_number.toLowerCase().includes(normalizedSearch) ||
-        seat.booked_student_name?.toLowerCase().includes(normalizedSearch) ||
-        seat.booked_student_code?.toLowerCase().includes(normalizedSearch);
-
-      return matchesSection && matchesAvailability && matchesSearch;
+    const q = search.trim().toLowerCase();
+    return seats.filter((s) => {
+      if (availFilter !== 'all' && s.availability_status !== availFilter) return false;
+      if (!q) return true;
+      return (
+        s.seat_number.toLowerCase().includes(q) ||
+        (s.booked_student_name?.toLowerCase() || '').includes(q) ||
+        (s.booked_student_code?.toLowerCase() || '').includes(q)
+      );
     });
-  }, [availabilityFilter, search, sectionFilter, seats]);
+  }, [seats, search, availFilter]);
 
-  const stats = useMemo(
-    () =>
-      seats.reduce(
-        (accumulator, seat) => {
-          accumulator.total += 1;
-          accumulator[seat.availability_status] += 1;
-          return accumulator;
-        },
-        { total: 0, available: 0, booked: 0, maintenance: 0, inactive: 0 },
-      ),
+  const stats = useMemo(() =>
+    seats.reduce(
+      (acc, s) => {
+        acc.total++;
+        acc[s.availability_status]++;
+        return acc;
+      },
+      { total: 0, available: 0, booked: 0, maintenance: 0, inactive: 0 },
+    ),
     [seats],
   );
 
-  const availableSeats = useMemo(
-    () => seats.filter((seat) => seat.availability_status === 'available'),
-    [seats],
-  );
+  // ── Bulk Create ──
+  const [bulkForm, setBulkForm] = useState({ branch_id: 0, start_number: 1, count: 100, floor_name: '' });
+  const [bulkLoading, setBulkLoading] = useState(false);
 
-  const selectedSeat = useMemo(
-    () => availableSeats.find((seat) => seat.id === form.seat_id) ?? null,
-    [availableSeats, form.seat_id],
-  );
+  async function handleBulkCreate() {
+    setActionMsg(null);
+    setBulkLoading(true);
+    try {
+      const result = await seatsApi.bulkCreate({
+        branch_id: effectiveBranchId ?? bulkForm.branch_id,
+        start_number: bulkForm.start_number,
+        count: bulkForm.count,
+        floor_name: bulkForm.floor_name.trim() || undefined,
+      });
+      setActionMsg({ type: 'success', text: `${result.created} seats created.` });
+      await loadData();
+    } catch (err) {
+      setActionMsg({ type: 'error', text: getApiErrorMessage(err, 'Failed to create seats') });
+    } finally {
+      setBulkLoading(false);
+    }
+  }
 
+  // ── Assign / Unassign ──
+  const [assignSeatId, setAssignSeatId] = useState<number | ''>('');
+  const [assignStudentId, setAssignStudentId] = useState<number | ''>('');
+  const [assignLoading, setAssignLoading] = useState(false);
+
+  const availableSeats = useMemo(() => seats.filter((s) => s.availability_status === 'available'), [seats]);
   const assignableStudents = useMemo(() => {
-    if (!isGlobalAssignmentMode) {
-      return eligibleStudents;
-    }
+    if (!assignSeatId) return students;
+    const seat = seats.find((s) => s.id === assignSeatId);
+    if (!seat) return students;
+    return students.filter((st) => st.branch_id === seat.branch_id);
+  }, [students, assignSeatId, seats]);
 
-    if (!selectedSeat) {
-      return [];
-    }
-
-    return eligibleStudents.filter((student) => student.branch_id === selectedSeat.branch_id);
-  }, [eligibleStudents, isGlobalAssignmentMode, selectedSeat]);
-
-  const selectedStudent = useMemo(
-    () => eligibleStudents.find((student) => student.id === form.student_id) ?? null,
-    [eligibleStudents, form.student_id],
-  );
-
-  useEffect(() => {
-    if (
-      form.student_id &&
-      !assignableStudents.some((student) => student.id === form.student_id)
-    ) {
-      setForm((current) => ({ ...current, student_id: 0 }));
-    }
-  }, [assignableStudents, form.student_id]);
-
-  async function handleCreateBooking() {
-    if (!form.seat_id || !form.student_id) {
-      setActionError('Select both a seat and a student.');
-      return;
-    }
-
-    if (
-      selectedSeat &&
-      selectedStudent &&
-      selectedSeat.branch_id !== selectedStudent.branch_id
-    ) {
-      setActionError('Select a student from the same branch as the selected seat.');
-      return;
-    }
-
-    setAssigning(true);
-    setActionError(null);
-    setSuccessMessage(null);
-
+  async function handleAssign() {
+    if (!assignSeatId || !assignStudentId) return;
+    setActionMsg(null);
+    setAssignLoading(true);
     try {
-      await seatsApi.createBooking({
-        seat_id: form.seat_id,
-        student_id: form.student_id,
-        booking_month: form.booking_month,
-        booking_year: form.booking_year,
-        notes: form.notes?.trim() || undefined,
-      });
-
-      setSuccessMessage('Seat booking created successfully.');
-      setForm((current) => ({ ...current, seat_id: 0, student_id: 0, notes: '' }));
+      await seatsApi.assign(assignSeatId, { student_id: assignStudentId });
+      setActionMsg({ type: 'success', text: 'Seat assigned successfully.' });
+      setAssignSeatId('');
+      setAssignStudentId('');
       await loadData();
-    } catch (actionErrorValue) {
-      setActionError(getApiErrorMessage(actionErrorValue, 'Failed to create seat booking.'));
+    } catch (err) {
+      setActionMsg({ type: 'error', text: getApiErrorMessage(err, 'Failed to assign seat') });
     } finally {
-      setAssigning(false);
+      setAssignLoading(false);
     }
   }
 
-  async function handleReleaseBooking(booking: SeatBooking) {
-    setReleasingId(booking.id);
-    setActionError(null);
-    setSuccessMessage(null);
-
+  async function handleUnassign(seatId: number) {
+    setActionMsg(null);
     try {
-      await seatsApi.releaseBooking(booking.id, {
-        release_reason:
-          booking.status === 'reserved'
-            ? 'Reservation cancelled from seats page'
-            : 'Seat released from seats page',
-      });
-
-      setSuccessMessage(`Seat ${booking.seat_number} released successfully.`);
+      await seatsApi.unassign(seatId);
+      setActionMsg({ type: 'success', text: 'Seat unassigned.' });
       await loadData();
-    } catch (actionErrorValue) {
-      setActionError(getApiErrorMessage(actionErrorValue, 'Failed to release seat booking.'));
-    } finally {
-      setReleasingId(null);
+    } catch (err) {
+      setActionMsg({ type: 'error', text: getApiErrorMessage(err, 'Failed to unassign seat') });
     }
   }
 
+  // ── Render ──
   return (
     <MainLayout>
       <div className="space-y-6">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
+        {/* Header */}
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl border border-purple-100 bg-gradient-to-r from-white via-purple-50 to-blue-50 p-6 shadow-sm"
         >
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-purple-600">
-                Monthly Seat Booking
-              </p>
+              <p className="text-sm font-semibold uppercase tracking-wide text-purple-600">Seat Management</p>
               <h1 className="mt-1 flex items-center gap-3 text-3xl font-bold text-gray-900">
-                <Armchair className="h-8 w-8 text-purple-600" />
-                Seats and Bookings
+                <Armchair className="h-8 w-8 text-purple-600" /> Seats
               </h1>
-              <p className="mt-2 text-gray-600">
-                Manage seat inventory, assign monthly bookings, and release seats safely by branch.
-              </p>
             </div>
-
             <div className="flex flex-wrap gap-3">
               <Badge variant={isSuperAdmin ? 'info' : 'success'}>
                 {isSuperAdmin ? 'Global Access' : 'Branch Restricted'}
               </Badge>
               <Button type="button" variant="secondary" onClick={() => void loadData()}>
-                <RefreshCcw className="h-4 w-4" />
-                Refresh
+                <RefreshCcw className="h-4 w-4" /> Refresh
               </Button>
             </div>
           </div>
@@ -344,84 +215,49 @@ export default function SeatsPage() {
             {isSuperAdmin && (
               <div>
                 <label className="mb-2 block text-sm font-semibold text-gray-700">Branch</label>
-                <select
-                  value={branchId}
-                  onChange={(event) => setBranchId(event.target.value ? Number(event.target.value) : '')}
-                  className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
+                <select value={branchId} onChange={(e) => setBranchId(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
                 >
                   <option value="">All Branches</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
             )}
-
             <div>
               <label className="mb-2 block text-sm font-semibold text-gray-700">Month</label>
-              <select
-                value={month}
-                onChange={(event) => setMonth(Number(event.target.value))}
-                className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
+              <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
+                className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
               >
-                {MONTHS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+                {MONTHS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
-
             <div>
               <label className="mb-2 block text-sm font-semibold text-gray-700">Year</label>
-              <select
-                value={year}
-                onChange={(event) => setYear(Number(event.target.value))}
-                className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
+              <select value={year} onChange={(e) => setYear(Number(e.target.value))}
+                className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
               >
-                {[now.getFullYear(), now.getFullYear() + 1].map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
+                {[now.getFullYear(), now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
-            </div>
-
-            <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-              <p className="text-sm font-semibold text-gray-700">Current Scope</p>
-              <p className="mt-1 font-bold text-gray-900">{branchName}</p>
-              <p className="mt-1 text-sm text-gray-500">
-                {MONTHS.find((option) => option.value === month)?.label} {year}
-              </p>
             </div>
           </div>
         </motion.div>
 
+        {/* Loading / Error */}
         {loading && (
-          <Card>
-            <div className="flex items-center justify-center py-12 text-gray-600">
-              <Loader2 className="mr-3 h-8 w-8 animate-spin text-purple-600" />
-              Loading seats...
-            </div>
-          </Card>
+          <Card><div className="flex items-center justify-center py-12 text-gray-600">
+            <Loader2 className="mr-3 h-8 w-8 animate-spin text-purple-600" /> Loading seats...
+          </div></Card>
         )}
-
         {error && (
-          <Card>
-            <div className="flex items-start gap-3 text-red-600">
-              <AlertCircle className="mt-0.5 h-5 w-5" />
-              <div>
-                <p className="font-semibold">Failed to load seat management</p>
-                <p className="text-sm">{error}</p>
-              </div>
-            </div>
-          </Card>
+          <Card><div className="flex items-start gap-3 text-red-600">
+            <AlertCircle className="mt-0.5 h-5 w-5" />
+            <div><p className="font-semibold">Failed to load</p><p className="text-sm">{error}</p></div>
+          </div></Card>
         )}
 
         {!loading && !error && (
           <>
+            {/* Stats */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-100">
                 <p className="text-sm font-medium text-blue-700">Total Seats</p>
@@ -448,284 +284,129 @@ export default function SeatsPage() {
                 <p className="text-sm font-medium text-amber-700">Maint. / Inactive</p>
                 <div className="mt-3 flex items-center gap-3">
                   <Wrench className="h-8 w-8 text-amber-600" />
-                  <p className="text-3xl font-bold text-amber-900">
-                    {stats.maintenance + stats.inactive}
-                  </p>
+                  <p className="text-3xl font-bold text-amber-900">{stats.maintenance + stats.inactive}</p>
                 </div>
               </Card>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_1.45fr]">
+            {/* Action Messages */}
+            {actionMsg && (
+              <div className={`rounded-xl border p-4 text-sm ${
+                actionMsg.type === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-green-200 bg-green-50 text-green-700'
+              }`}>
+                {actionMsg.text}
+              </div>
+            )}
+
+            {/* Bulk Create + Assign Section */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <Card>
-                <div className="mb-6 flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-100">
-                    <UserPlus className="h-6 w-6 text-purple-700" />
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100">
+                    <Plus className="h-5 w-5 text-purple-700" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Assign Seat</h2>
-                    <p className="text-sm text-gray-500">
-                      Create a booking for the selected month.
-                    </p>
+                    <h2 className="text-lg font-bold text-gray-900">Create Seats</h2>
+                    <p className="text-sm text-gray-500">Bulk-create numbered seats for a branch.</p>
                   </div>
                 </div>
-
-                {isGlobalAssignmentMode && (
-                  <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                    All branches are in view. Pick a seat first and the student list will narrow to
-                    that branch automatically.
-                  </div>
-                )}
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-gray-700">Seat</label>
-                    <select
-                      value={form.seat_id || ''}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          seat_id: event.target.value ? Number(event.target.value) : 0,
-                        }))
-                      }
-                      disabled={assigning || availableSeats.length === 0}
-                      className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
-                    >
-                      <option value="">Select available seat</option>
-                      {availableSeats.map((seat) => (
-                        <option key={seat.id} value={seat.id}>
-                          {seat.seat_number} • {seat.section}
-                        </option>
-                      ))}
-                    </select>
-                    {availableSeats.length === 0 && (
-                      <p className="mt-1.5 text-sm text-amber-700">
-                        No available seats found for the selected branch and month.
-                      </p>
-                    )}
-                    {selectedSeat && (
-                      <p className="mt-1.5 text-sm text-blue-700">
-                        Selected seat branch:{' '}
-                        {branches.find((branch) => branch.id === selectedSeat.branch_id)?.name ??
-                          `Branch ${selectedSeat.branch_id}`}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-gray-700">Student</label>
-                    <select
-                      value={form.student_id || ''}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          student_id: event.target.value ? Number(event.target.value) : 0,
-                        }))
-                      }
-                      disabled={
-                        assigning ||
-                        assignableStudents.length === 0 ||
-                        (isGlobalAssignmentMode && !selectedSeat)
-                      }
-                      className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-500/10"
-                    >
-                      <option value="">
-                        {isGlobalAssignmentMode && !selectedSeat
-                          ? 'Select a seat first'
-                          : 'Select eligible student'}
-                      </option>
-                      {assignableStudents.map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.name} ({student.student_id})
-                          {isGlobalAssignmentMode ? ` - ${student.branch_name}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {isGlobalAssignmentMode && !selectedSeat && (
-                      <p className="mt-1.5 text-sm text-blue-700">
-                        Choose a seat to see students from the same branch.
-                      </p>
-                    )}
-                    {selectedSeat && assignableStudents.length === 0 && (
-                      <p className="mt-1.5 text-sm text-amber-700">
-                        No eligible students are available for{' '}
-                        {branches.find((branch) => branch.id === selectedSeat.branch_id)?.name ??
-                          `Branch ${selectedSeat.branch_id}`}
-                        .
-                      </p>
-                    )}
-                  </div>
-
-                  <Input
-                    label="Notes"
-                    placeholder="Optional booking note"
-                    value={form.notes || ''}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, notes: event.target.value }))
-                    }
-                    disabled={assigning}
-                    fullWidth
-                  />
-
-                  {actionError && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {actionError}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-gray-700">Start Number</label>
+                      <input type="number" min={1} value={bulkForm.start_number}
+                        onChange={(e) => setBulkForm((f) => ({ ...f, start_number: Number(e.target.value) }))}
+                        className="w-full rounded-xl border-2 border-gray-200 px-4 py-2.5 text-gray-900 focus:border-purple-500 focus:outline-none" />
                     </div>
-                  )}
-
-                  {successMessage && (
-                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                      {successMessage}
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-gray-700">Count</label>
+                      <input type="number" min={1} max={1000} value={bulkForm.count}
+                        onChange={(e) => setBulkForm((f) => ({ ...f, count: Number(e.target.value) }))}
+                        className="w-full rounded-xl border-2 border-gray-200 px-4 py-2.5 text-gray-900 focus:border-purple-500 focus:outline-none" />
                     </div>
-                  )}
-
-                  <Button
-                    type="button"
-                    isLoading={assigning}
-                    onClick={() => void handleCreateBooking()}
-                    disabled={
-                      assigning ||
-                      !form.seat_id ||
-                      !form.student_id ||
-                      (isGlobalAssignmentMode && !selectedSeat)
-                    }
-                    fullWidth
-                  >
-                    Create Seat Booking
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-semibold text-gray-700">Floor Name (optional)</label>
+                    <input type="text" placeholder="e.g. Ground Floor" value={bulkForm.floor_name}
+                      onChange={(e) => setBulkForm((f) => ({ ...f, floor_name: e.target.value }))}
+                      className="w-full rounded-xl border-2 border-gray-200 px-4 py-2.5 text-gray-900 focus:border-purple-500 focus:outline-none" />
+                  </div>
+                  <Button type="button" variant="primary" isLoading={bulkLoading}
+                    onClick={() => void handleBulkCreate()}
+                    disabled={bulkLoading || (!effectiveBranchId && !isSuperAdmin) || bulkForm.count < 1}
+                    fullWidth>
+                    Create {bulkForm.count} Seats
                   </Button>
                 </div>
               </Card>
 
-              <Card noPadding>
-                <div className="flex items-center justify-between border-b border-gray-100 p-6">
+              <Card>
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100">
+                    <UserPlus className="h-5 w-5 text-purple-700" />
+                  </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Recent Bookings</h2>
-                    <p className="text-sm text-gray-500">
-                      Reservations and releases for the selected scope.
-                    </p>
+                    <h2 className="text-lg font-bold text-gray-900">Assign Seat</h2>
+                    <p className="text-sm text-gray-500">Permanently assign a seat to a student.</p>
                   </div>
-                  <Badge variant="info">{bookings.length}</Badge>
                 </div>
-
-                {bookings.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">No bookings found yet.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="border-b border-gray-200 bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Seat</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Student</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Period</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Assigned</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {bookings.map((booking) => (
-                          <tr key={booking.id} className="transition-colors hover:bg-gray-50">
-                            <td className="px-6 py-4">
-                              <p className="font-semibold text-gray-900">{booking.seat_number}</p>
-                              <p className="text-sm text-gray-500">
-                                {booking.section}
-                                {isSuperAdmin ? ` • ${booking.branch_name}` : ''}
-                              </p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <p className="font-semibold text-gray-900">{booking.student_name}</p>
-                              <p className="text-sm text-gray-500">{booking.student_code}</p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <Badge variant={badgeVariantForBooking(booking.status)}>
-                                {booking.status}
-                              </Badge>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              <div className="flex items-start gap-2">
-                                <CalendarDays className="mt-0.5 h-4 w-4 text-gray-400" />
-                                <div>
-                                  <p>
-                                    {MONTHS.find((option) => option.value === booking.booking_month)?.label}{' '}
-                                    {booking.booking_year}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {formatDate(booking.start_date)} - {formatDate(booking.end_date)}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {formatDateTime(booking.assigned_at)}
-                            </td>
-                            <td className="px-6 py-4">
-                              {booking.status === 'active' || booking.status === 'reserved' ? (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  isLoading={releasingId === booking.id}
-                                  onClick={() => void handleReleaseBooking(booking)}
-                                >
-                                  Release
-                                </Button>
-                              ) : (
-                                <span className="text-sm text-gray-500">
-                                  {booking.release_reason || 'Closed'}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-semibold text-gray-700">Seat</label>
+                    <select value={assignSeatId} onChange={(e) => { setAssignSeatId(e.target.value ? Number(e.target.value) : ''); setAssignStudentId(''); }}
+                      className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-2.5 text-gray-900 focus:border-purple-500 focus:outline-none">
+                      <option value="">Select available seat</option>
+                      {availableSeats.map((s) => (
+                        <option key={s.id} value={s.id}>{s.seat_number}</option>
+                      ))}
+                    </select>
+                    {availableSeats.length === 0 && (
+                      <p className="mt-1 text-sm text-amber-700">No available seats.</p>
+                    )}
                   </div>
-                )}
+                  <div>
+                    <label className="mb-1 block text-sm font-semibold text-gray-700">Student</label>
+                    <select value={assignStudentId} onChange={(e) => setAssignStudentId(e.target.value ? Number(e.target.value) : '')}
+                      disabled={!assignSeatId || assignableStudents.length === 0}
+                      className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-2.5 text-gray-900 focus:border-purple-500 focus:outline-none">
+                      <option value="">
+                        {!assignSeatId ? 'Select a seat first' : 'Select student'}
+                      </option>
+                      {assignableStudents.map((st) => (
+                        <option key={st.id} value={st.id}>{st.name} ({st.student_id})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button type="button" variant="primary" isLoading={assignLoading}
+                    onClick={() => void handleAssign()}
+                    disabled={!assignSeatId || !assignStudentId || assignLoading} fullWidth>
+                    Assign Seat
+                  </Button>
+                </div>
               </Card>
             </div>
 
+            {/* Seat Inventory */}
             <Card noPadding>
               <div className="border-b border-gray-100 p-6">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">Seat Inventory</h2>
-                    <p className="text-sm text-gray-500">Live seat visibility for {branchName}.</p>
+                    <p className="text-sm text-gray-500">Permanent seat assignments. Click Assign/Unassign to manage.</p>
                   </div>
-
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div className="relative min-w-[220px]">
+                  <div className="flex gap-3">
+                    <div className="relative min-w-[200px]">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
+                      <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search seat or student..."
-                        className="w-full rounded-xl border border-gray-200 py-3 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
+                        className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                     </div>
-
-                    <select
-                      value={sectionFilter}
-                      onChange={(event) => setSectionFilter(event.target.value as 'all' | SeatSection)}
-                      className="rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    >
-                      {SECTION_FILTERS.map((option) => (
-                        <option key={option} value={option}>
-                          {option === 'all' ? 'All Sections' : option}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={availabilityFilter}
-                      onChange={(event) =>
-                        setAvailabilityFilter(event.target.value as 'all' | SeatAvailabilityStatus)
-                      }
-                      className="rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    >
-                      {AVAILABILITY_FILTERS.map((option) => (
-                        <option key={option} value={option}>
-                          {option === 'all' ? 'All Statuses' : option}
-                        </option>
+                    <select value={availFilter} onChange={(e) => setAvailFilter(e.target.value)}
+                      className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                      {AVAILABILITY_FILTERS.map((f) => (
+                        <option key={f} value={f}>{f === 'all' ? 'All Statuses' : f}</option>
                       ))}
                     </select>
                   </div>
@@ -733,20 +414,17 @@ export default function SeatsPage() {
               </div>
 
               {filteredSeats.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">No seats matched the filters.</div>
+                <div className="p-8 text-center text-gray-500">No seats match the filters.</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="border-b border-gray-200 bg-gray-50">
                       <tr>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Seat</th>
-                        {isSuperAdmin && (
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Branch</th>
-                        )}
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Section</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Availability</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Student</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Period</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Floor</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Assigned To</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -754,43 +432,98 @@ export default function SeatsPage() {
                         <tr key={seat.id} className="transition-colors hover:bg-gray-50">
                           <td className="px-6 py-4">
                             <p className="font-semibold text-gray-900">{seat.seat_number}</p>
-                            <p className="text-sm text-gray-500">{seat.floor_name || 'Floor not set'}</p>
                           </td>
-                          {isSuperAdmin && (
-                            <td className="px-6 py-4 text-sm text-gray-700">
-                              {branches.find((branch) => branch.id === seat.branch_id)?.name ?? `Branch ${seat.branch_id}`}
-                            </td>
-                          )}
-                          <td className="px-6 py-4 text-sm text-gray-700">{seat.section}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{seat.floor_name || '-'}</td>
                           <td className="px-6 py-4">
-                            <Badge variant={badgeVariantForAvailability(seat.availability_status)}>
+                            <Badge variant={badgeVariant(seat.availability_status)}>
                               {seat.availability_status}
                             </Badge>
                           </td>
                           <td className="px-6 py-4">
                             {seat.booked_student_name ? (
-                              <>
+                              <div>
                                 <p className="font-semibold text-gray-900">{seat.booked_student_name}</p>
                                 <p className="text-sm text-gray-500">{seat.booked_student_code}</p>
-                              </>
+                              </div>
                             ) : (
                               <span className="text-sm text-gray-500">Open</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-700">
-                            {seat.start_date ? (
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              {seat.availability_status === 'available' && (
+                                <Button type="button" variant="primary" size="sm" fullWidth={false}
+                                  onClick={() => { setAssignSeatId(seat.id); }}>
+                                  Assign
+                                </Button>
+                              )}
+                              {seat.availability_status === 'booked' && (
+                                <Button type="button" variant="outline" size="sm" fullWidth={false}
+                                  onClick={() => void handleUnassign(seat.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" /> Unassign
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            {/* Recent Bookings */}
+            <Card noPadding>
+              <div className="flex items-center justify-between border-b border-gray-100 p-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Monthly Bookings</h2>
+                  <p className="text-sm text-gray-500">Booking history for {MONTHS.find((m) => m.value === month)?.label} {year}.</p>
+                </div>
+                <Badge variant="info">{bookings.length}</Badge>
+              </div>
+
+              {bookings.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">No bookings found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="border-b border-gray-200 bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Seat</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Student</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Period</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Assigned</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {bookings.map((b) => (
+                        <tr key={b.id} className="transition-colors hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <p className="font-semibold text-gray-900">{b.seat_number}</p>
+                            <p className="text-sm text-gray-500">{b.section}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="font-semibold text-gray-900">{b.student_name}</p>
+                            <p className="text-sm text-gray-500">{b.student_code}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <Badge variant={badgeVariant(b.status)}>{b.status}</Badge>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            <div className="flex items-start gap-2">
+                              <CalendarDays className="mt-0.5 h-4 w-4 text-gray-400" />
                               <div>
-                                <div className="flex items-center gap-2">
-                                  <CalendarDays className="h-4 w-4 text-gray-400" />
-                                  {formatDate(seat.start_date)} - {formatDate(seat.end_date)}
-                                </div>
-                                {seat.booking_status && (
-                                  <p className="mt-1 text-xs text-gray-500">{seat.booking_status}</p>
-                                )}
+                                <p>{MONTHS.find((m) => m.value === b.booking_month)?.label} {b.booking_year}</p>
+                                <p className="text-xs text-gray-500">
+                                  {b.start_date ? new Date(b.start_date).toLocaleDateString('en-IN') : '-'} - {b.end_date ? new Date(b.end_date).toLocaleDateString('en-IN') : '-'}
+                                </p>
                               </div>
-                            ) : (
-                              'Open'
-                            )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {b.assigned_at ? new Date(b.assigned_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
                           </td>
                         </tr>
                       ))}
