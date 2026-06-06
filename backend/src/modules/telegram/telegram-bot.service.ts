@@ -488,7 +488,8 @@ async function processPaymentConfirm(
 
       const payInfo = await client.query(`
         SELECT fp.amount, fp.receipt_number, TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
-               s.name AS student_name, s.phone, s.email, b.name AS branch_name
+               s.name AS student_name, s.phone, s.email, b.name AS branch_name,
+               fp.student_id, s.branch_id
         FROM fee_payments fp
         JOIN students s ON s.id = fp.student_id
         JOIN branches b ON b.id = s.branch_id
@@ -514,6 +515,18 @@ async function processPaymentConfirm(
           WHERE fp.id = $1
         `, [paymentId, p.phone, receiptMsg]);
 
+        await client.query(`
+          INSERT INTO notifications (type, severity, branch_id, title, description, action_route, metadata, source_key)
+          VALUES ('payment_received', 'info', $2, $3, $4, '/payments', $5, $6)
+        `, [
+          paymentId,
+          p.branch_id,
+          `${p.student_name} payment confirmed (Telegram)`,
+          `Rs ${Number(p.amount).toLocaleString('en-IN')} confirmed for ${p.student_name} at ${p.branch_name}.`,
+          JSON.stringify({ payment_id: paymentId, student_id: p.student_id, receipt_number: p.receipt_number, amount: Number(p.amount) }),
+          `payment-confirmed-${paymentId}`,
+        ]);
+
         let emailNote = '';
         if (p.email) {
           const emailResult = await sendReceiptEmail(
@@ -530,6 +543,17 @@ async function processPaymentConfirm(
         }
 
         await client.query('COMMIT');
+
+        const ioServer = (globalThis as any).io;
+        if (ioServer && typeof ioServer.to === 'function') {
+          ioServer.to('role:superadmin').emit('payment_activity', {
+            paymentId,
+            studentId: p.student_id,
+            branchId: p.branch_id,
+            status: 'paid',
+          });
+        }
+
         await respond(chatId, `Payment #${paymentId} confirmed and receipt logged${emailNote}`);
         return { processed: true };
       }
