@@ -449,6 +449,71 @@ function getMainKeyboard() {
   };
 }
 
+// ─── Payment Helpers ─────────────────────────────────
+
+async function processPaymentConfirm(
+  paymentId: number,
+  isConfirm: boolean,
+  chatId: number | string,
+): Promise<void> {
+  if (isConfirm) {
+    await pool.query(
+      `UPDATE fee_payments SET status = 'paid', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
+      [paymentId],
+    );
+
+    const payInfo = await pool.query(`
+      SELECT fp.amount, fp.receipt_number, TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
+             s.name AS student_name, s.phone, s.email, b.name AS branch_name
+      FROM fee_payments fp
+      JOIN students s ON s.id = fp.student_id
+      JOIN branches b ON b.id = s.branch_id
+      WHERE fp.id = $1
+    `, [paymentId]);
+
+    if (payInfo.rows[0]) {
+      const p = payInfo.rows[0];
+      const receiptMsg = [
+        `Receipt: ${p.receipt_number ?? 'N/A'}`,
+        `Student: ${p.student_name}`,
+        `Amount: Rs ${Number(p.amount).toLocaleString('en-IN')}`,
+        `Date: ${p.payment_date}`,
+        `Branch: ${p.branch_name}`,
+        `Status: Verified by admin`,
+      ].join('\n');
+
+      await pool.query(`
+        INSERT INTO payment_communications (student_id, payment_id, branch_id, communication_type, channel, delivery_status, delivery_mode, recipient_phone, message_body, sent_at)
+        SELECT fp.student_id, fp.id, s.branch_id, 'payment_receipt', 'sms', 'logged', 'log_only', $2, $3, CURRENT_TIMESTAMP
+        FROM fee_payments fp
+        JOIN students s ON s.id = fp.student_id
+        WHERE fp.id = $1
+      `, [paymentId, p.phone, receiptMsg]);
+
+      if (p.email) {
+        const emailResult = await sendReceiptEmail(
+          p.email,
+          p.student_name,
+          p.receipt_number ?? `RCP-${String(paymentId).padStart(6, '0')}`,
+          Number(p.amount),
+          p.payment_date,
+          p.branch_name,
+        );
+        if (!emailResult.sent) {
+          console.error('Receipt email failed:', emailResult.error);
+        }
+      }
+    }
+  } else {
+    await pool.query(
+      `UPDATE fee_payments SET status = 'rejected', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
+      [paymentId],
+    );
+  }
+
+  await respond(chatId, `Payment #${paymentId} ${isConfirm ? 'confirmed and receipt logged' : 'rejected'}`);
+}
+
 // ─── Bot ───────────────────────────────────────────
 
 async function respond(chatId: number | string, text: string, extra: Record<string, any> = {}): Promise<void> {
@@ -504,7 +569,7 @@ async function handleCommand(chatId: number, text: string): Promise<void> {
     switch (cmd) {
       case '/start':
         await respond(chatId,
-          `Hello! I send library updates here.\n\nCommands:\n/summary — quick overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat status\n/alerts — current issues\n/branches — branch-wise snapshot\n/today — today\'s activity\n/revenue — revenue breakdown\n/bookings — active seat bookings\n/defaulters — top defaulters\n/find <name> — search student\n/notifications — recent notifications\n/help — all commands`,
+          `Hello! I send library updates here.\n\nCommands:\n/summary — quick overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat status\n/alerts — current issues\n/branches — branch-wise snapshot\n/today — today\'s activity\n/revenue — revenue breakdown\n/bookings — active seat bookings\n/defaulters — top defaulters\n/find <name> — search student\n/confirm <id> — confirm pending payment\n/notifications — recent notifications\n/help — all commands`,
           getMainKeyboard()
         );
         break;
@@ -585,9 +650,28 @@ async function handleCommand(chatId: number, text: string): Promise<void> {
         break;
       }
 
+      case '/confirm': {
+        if (!args || isNaN(Number(args))) {
+          await respond(chatId, 'Usage: /confirm <paymentId>');
+          break;
+        }
+        const paymentId = Number(args);
+        const check = await pool.query(`SELECT id, status FROM fee_payments WHERE id = $1`, [paymentId]);
+        if (check.rows.length === 0) {
+          await respond(chatId, `Payment #${paymentId} not found`);
+          break;
+        }
+        if (check.rows[0].status !== 'pending') {
+          await respond(chatId, `Payment #${paymentId} is already ${check.rows[0].status}`);
+          break;
+        }
+        await processPaymentConfirm(paymentId, true, chatId);
+        break;
+      }
+
       case '/help':
         await respond(chatId,
-          `Commands:\n/summary — daily overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat availability\n/alerts — issues needing attention\n/branches — branch-wise snapshot\n/today — today\'s activity\n/revenue — revenue breakdown\n/bookings — active seat bookings\n/defaulters — top defaulters\n/find <name> — search student\n/notifications — recent notifications\n/help — this message`,
+          `Commands:\n/summary — daily overview\n/payments — pending payments\n/overdue — overdue payments\n/seats — seat availability\n/alerts — issues needing attention\n/branches — branch-wise snapshot\n/today — today\'s activity\n/revenue — revenue breakdown\n/bookings — active seat bookings\n/defaulters — top defaulters\n/find <name> — search student\n/confirm <id> — confirm pending payment\n/notifications — recent notifications\n/help — this message`,
           getMainKeyboard()
         );
         break;
@@ -657,63 +741,7 @@ export async function startTelegramBot(): Promise<void> {
           const parts = data.split('_');
           const paymentId = Number(parts[parts.length - 1]);
           const isConfirm = data.startsWith('confirm_payment_');
-
-          if (isConfirm) {
-            await pool.query(
-              `UPDATE fee_payments SET verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1`,
-              [paymentId]
-            );
-
-            const payInfo = await pool.query(`
-              SELECT fp.amount, fp.receipt_number, TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
-                     s.name AS student_name, s.phone, s.email, b.name AS branch_name
-              FROM fee_payments fp
-              JOIN students s ON s.id = fp.student_id
-              JOIN branches b ON b.id = s.branch_id
-              WHERE fp.id = $1
-            `, [paymentId]);
-
-            if (payInfo.rows[0]) {
-              const p = payInfo.rows[0];
-              const receiptMsg = [
-                `Receipt: ${p.receipt_number ?? 'N/A'}`,
-                `Student: ${p.student_name}`,
-                `Amount: Rs ${Number(p.amount).toLocaleString('en-IN')}`,
-                `Date: ${p.payment_date}`,
-                `Branch: ${p.branch_name}`,
-                `Status: Verified by admin`,
-              ].join('\n');
-
-              await pool.query(`
-                INSERT INTO payment_communications (student_id, payment_id, branch_id, communication_type, channel, delivery_status, delivery_mode, recipient_phone, message_body, sent_at)
-                SELECT fp.student_id, fp.id, s.branch_id, 'payment_receipt', 'sms', 'logged', 'log_only', $2, $3, CURRENT_TIMESTAMP
-                FROM fee_payments fp
-                JOIN students s ON s.id = fp.student_id
-                WHERE fp.id = $1
-              `, [paymentId, p.phone, receiptMsg]);
-
-              if (p.email) {
-                const emailResult = await sendReceiptEmail(
-                  p.email,
-                  p.student_name,
-                  p.receipt_number ?? `RCP-${String(paymentId).padStart(6, '0')}`,
-                  Number(p.amount),
-                  p.payment_date,
-                  p.branch_name,
-                );
-                if (!emailResult.sent) {
-                  console.error('Receipt email failed:', emailResult.error);
-                }
-              }
-            }
-          } else {
-            await pool.query(
-              `UPDATE fee_payments SET status = 'pending', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1`,
-              [paymentId]
-            );
-          }
-
-          await respond(chatId, `Payment #${paymentId} ${isConfirm ? 'confirmed and receipt logged' : 'rejected'}`);
+          await processPaymentConfirm(paymentId, isConfirm, chatId);
           return;
         }
 
@@ -738,6 +766,7 @@ export async function startTelegramBot(): Promise<void> {
         { command: 'defaulters', description: 'Top defaulters' },
         { command: 'find', description: 'Search student by name' },
         { command: 'notifications', description: 'Recent notifications' },
+        { command: 'confirm', description: 'Confirm <paymentId>' },
         { command: 'help', description: 'Show all commands' },
       ]);
     } catch {}
