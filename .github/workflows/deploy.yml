@@ -70,6 +70,6 @@ jobs:
             echo "ssh-keyscan attempt $i failed, retrying..." && sleep 3
           done
           for i in 1 2 3; do
-            scp -r release/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/apps/library-management-system/releases/ && break
+            timeout 900 scp -r release/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/apps/library-management-system/releases/ && break
             echo "SCP attempt $i failed, retrying..." && sleep 3
           done
