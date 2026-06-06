@@ -21,7 +21,7 @@ jobs:
             git pull
             docker compose up -d --build
 
-  publish-desktop:
+  build-desktop:
     needs: deploy-backend
     runs-on: windows-latest
 
@@ -42,12 +42,29 @@ jobs:
         env:
           VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
 
-      - name: Upload release to VPS
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release
+          path: desktop-app/release/*
+
+  upload-to-vps:
+    needs: build-desktop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-release
+          path: release
+
+      - name: Upload to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "desktop-app/release/*"
+          source: "release/*"
           target: "~/apps/library-management-system/releases"
-          strip_components: 2
+          strip_components: 1
