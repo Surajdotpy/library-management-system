@@ -251,7 +251,7 @@ export async function getSeats(filters: SeatQueryFilters): Promise<SeatSnapshot[
     `;
   }
 
-  query += ' ORDER BY s.branch_id, CAST(s.seat_number AS INTEGER), s.seat_number';
+  query += ' ORDER BY s.branch_id, LENGTH(s.seat_number), s.seat_number';
 
   const result = await pool.query<SeatSnapshot>(query, params);
   return result.rows;
