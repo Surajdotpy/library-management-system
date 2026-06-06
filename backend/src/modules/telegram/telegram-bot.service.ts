@@ -107,7 +107,7 @@ async function getSeatSummary(): Promise<SeatInfo[]> {
     FROM seats s
     JOIN branches b ON b.id = s.branch_id
     LEFT JOIN students st ON st.id = s.assigned_to_student_id
-    ORDER BY b.name, CAST(s.seat_number AS INTEGER)
+    ORDER BY b.name, LENGTH(s.seat_number), s.seat_number
     LIMIT 30
   `);
   return result.rows;
