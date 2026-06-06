@@ -3,6 +3,8 @@ import helmet from 'helmet';
 import cors from 'cors';
 import './config/load-env.ts';
 import { corsOptions } from './config/cors.ts';
+import * as Sentry from '@sentry/node';
+import pool from './config/db.ts';
 import authRoutes from './modules/auth/auth.routes.ts';
 import attendanceRoutes from './modules/attendance/attendance.routes.ts';
 import branchRoutes from './modules/branches/branches.routes.ts';
@@ -18,6 +20,14 @@ import { generalApiRateLimiter } from './middleware/rate-limit.middleware.ts';
 
 const app: Application = express();
 const API_BODY_LIMIT = process.env.API_BODY_LIMIT || '1mb';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.2,
+  });
+}
 
 app.use(helmet());
 app.use(
@@ -46,13 +56,25 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.get('/health', (_req: Request, res: Response) => {
-  res.status(200).json({
-    success: true,
-    message: 'Server is healthy',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-  });
+app.get('/health', async (_req: Request, res: Response) => {
+  try {
+    await pool.query('SELECT 1');
+    res.status(200).json({
+      success: true,
+      message: 'Server is healthy',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+    });
+  } catch {
+    res.status(503).json({
+      success: false,
+      message: 'Database connection failed',
+      database: 'disconnected',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+    });
+  }
 });
 
 app.get('/', (_req: Request, res: Response) => {
@@ -84,6 +106,10 @@ app.use((req: Request, res: Response) => {
     path: req.path,
   });
 });
+
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('API error:', err);
