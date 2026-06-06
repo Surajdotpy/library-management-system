@@ -59,12 +59,13 @@ jobs:
           name: desktop-release
           path: release
 
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
       - name: Upload to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "release/*"
-          target: "~/apps/library-management-system/releases"
-          strip_components: 1
+        run: |
+          scp -r release/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/apps/library-management-system/releases/
