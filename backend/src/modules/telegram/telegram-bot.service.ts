@@ -456,74 +456,111 @@ async function processPaymentConfirm(
   isConfirm: boolean,
   chatId: number | string,
 ): Promise<{ processed: boolean; status?: string }> {
-  const check = await pool.query(`SELECT id, status FROM fee_payments WHERE id = $1`, [paymentId]);
-  if (check.rows.length === 0) {
-    await respond(chatId, `Payment #${paymentId} not found`);
-    return { processed: false };
-  }
-  const currentStatus = check.rows[0].status;
-  if (currentStatus !== 'pending') {
-    await respond(chatId, `Payment #${paymentId} is already ${currentStatus}`);
-    return { processed: false, status: currentStatus };
-  }
+  const client = await pool.connect();
 
-  if (isConfirm) {
-    await pool.query(
-      `UPDATE fee_payments SET status = 'paid', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
-      [paymentId],
-    );
+  try {
+    await client.query('BEGIN');
 
-    const payInfo = await pool.query(`
-      SELECT fp.amount, fp.receipt_number, TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
-             s.name AS student_name, s.phone, s.email, b.name AS branch_name
-      FROM fee_payments fp
-      JOIN students s ON s.id = fp.student_id
-      JOIN branches b ON b.id = s.branch_id
-      WHERE fp.id = $1
-    `, [paymentId]);
+    const check = await client.query(`SELECT id, status FROM fee_payments WHERE id = $1`, [paymentId]);
+    if (check.rows.length === 0) {
+      await client.query('ROLLBACK');
+      await respond(chatId, `Payment #${paymentId} not found`);
+      return { processed: false };
+    }
+    const currentStatus = check.rows[0].status;
+    if (currentStatus !== 'pending') {
+      await client.query('ROLLBACK');
+      await respond(chatId, `Payment #${paymentId} is already ${currentStatus}`);
+      return { processed: false, status: currentStatus };
+    }
 
-    if (payInfo.rows[0]) {
-      const p = payInfo.rows[0];
-      const receiptMsg = [
-        `Receipt: ${p.receipt_number ?? 'N/A'}`,
-        `Student: ${p.student_name}`,
-        `Amount: Rs ${Number(p.amount).toLocaleString('en-IN')}`,
-        `Date: ${p.payment_date}`,
-        `Branch: ${p.branch_name}`,
-        `Status: Verified by admin`,
-      ].join('\n');
+    if (isConfirm) {
+      const updateResult = await client.query(
+        `UPDATE fee_payments SET status = 'paid', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
+        [paymentId],
+      );
 
-      await pool.query(`
-        INSERT INTO payment_communications (student_id, payment_id, branch_id, communication_type, channel, delivery_status, delivery_mode, recipient_phone, message_body, sent_at)
-        SELECT fp.student_id, fp.id, s.branch_id, 'payment_receipt', 'sms', 'logged', 'log_only', $2, $3, CURRENT_TIMESTAMP
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        await respond(chatId, `Payment #${paymentId} was already processed by another admin`);
+        return { processed: false };
+      }
+
+      const payInfo = await client.query(`
+        SELECT fp.amount, fp.receipt_number, TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
+               s.name AS student_name, s.phone, s.email, b.name AS branch_name
         FROM fee_payments fp
         JOIN students s ON s.id = fp.student_id
+        JOIN branches b ON b.id = s.branch_id
         WHERE fp.id = $1
-      `, [paymentId, p.phone, receiptMsg]);
+      `, [paymentId]);
 
-      if (p.email) {
-        const emailResult = await sendReceiptEmail(
-          p.email,
-          p.student_name,
-          p.receipt_number ?? `RCP-${String(paymentId).padStart(6, '0')}`,
-          Number(p.amount),
-          p.payment_date,
-          p.branch_name,
-        );
-        if (!emailResult.sent) {
-          console.error('Receipt email failed:', emailResult.error);
+      if (payInfo.rows[0]) {
+        const p = payInfo.rows[0];
+        const receiptMsg = [
+          `Receipt: ${p.receipt_number ?? 'N/A'}`,
+          `Student: ${p.student_name}`,
+          `Amount: Rs ${Number(p.amount).toLocaleString('en-IN')}`,
+          `Date: ${p.payment_date}`,
+          `Branch: ${p.branch_name}`,
+          `Status: Verified by admin`,
+        ].join('\n');
+
+        await client.query(`
+          INSERT INTO payment_communications (student_id, payment_id, branch_id, communication_type, channel, delivery_status, delivery_mode, recipient_phone, message_body, sent_at)
+          SELECT fp.student_id, fp.id, s.branch_id, 'payment_receipt', 'sms', 'logged', 'log_only', $2, $3, CURRENT_TIMESTAMP
+          FROM fee_payments fp
+          JOIN students s ON s.id = fp.student_id
+          WHERE fp.id = $1
+        `, [paymentId, p.phone, receiptMsg]);
+
+        let emailNote = '';
+        if (p.email) {
+          const emailResult = await sendReceiptEmail(
+            p.email,
+            p.student_name,
+            p.receipt_number ?? `RCP-${String(paymentId).padStart(6, '0')}`,
+            Number(p.amount),
+            p.payment_date,
+            p.branch_name,
+          );
+          if (!emailResult.sent) {
+            emailNote = ` (email: ${emailResult.error})`;
+          }
         }
+
+        await client.query('COMMIT');
+        await respond(chatId, `Payment #${paymentId} confirmed and receipt logged${emailNote}`);
+        return { processed: true };
       }
+
+      await client.query('COMMIT');
+      await respond(chatId, `Payment #${paymentId} confirmed`);
+      return { processed: true };
     }
-  } else {
-    await pool.query(
+
+    const updateResult = await client.query(
       `UPDATE fee_payments SET status = 'rejected', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
       [paymentId],
     );
-  }
 
-  await respond(chatId, `Payment #${paymentId} ${isConfirm ? 'confirmed and receipt logged' : 'rejected'}`);
-  return { processed: true };
+    if (updateResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      await respond(chatId, `Payment #${paymentId} was already processed by another admin`);
+      return { processed: false };
+    }
+
+    await client.query('COMMIT');
+    await respond(chatId, `Payment #${paymentId} rejected`);
+    return { processed: true };
+  } catch (error: any) {
+    await client.query('ROLLBACK');
+    console.error('processPaymentConfirm error:', error?.message ?? error);
+    await respond(chatId, `Failed to process payment #${paymentId}: ${error?.message ?? 'unknown error'}`);
+    return { processed: false };
+  } finally {
+    client.release();
+  }
 }
 
 // ─── Bot ───────────────────────────────────────────
