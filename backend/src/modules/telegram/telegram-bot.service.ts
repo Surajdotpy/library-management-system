@@ -651,6 +651,28 @@ export async function startTelegramBot(): Promise<void> {
         if (!chatId || !data) return;
         if (!isAuthorized(chatId)) return;
         await ctx.answerCbQuery();
+
+        if (data.startsWith('confirm_payment_') || data.startsWith('reject_payment_')) {
+          const parts = data.split('_');
+          const paymentId = Number(parts[parts.length - 1]);
+          const isConfirm = data.startsWith('confirm_payment_');
+
+          if (isConfirm) {
+            await pool.query(
+              `UPDATE fee_payments SET verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1`,
+              [paymentId]
+            );
+          } else {
+            await pool.query(
+              `UPDATE fee_payments SET status = 'pending', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1`,
+              [paymentId]
+            );
+          }
+
+          await respond(chatId, `Payment #${paymentId} marked as ${isConfirm ? 'verified' : 'rejected'}`);
+          return;
+        }
+
         await handleCommand(chatId, `/${data}`);
       } catch (error: any) {
         console.error('Callback query error:', error?.message ?? error);
@@ -695,5 +717,41 @@ export function stopTelegramBot(): void {
     } catch {}
     bot = null;
     console.log('Telegram bot stopped');
+  }
+}
+
+export async function pushPaymentAlert(payment: {
+  id: number;
+  student_name: string;
+  amount: number;
+  branch_name: string;
+  payment_method: string;
+}): Promise<void> {
+  if (ADMIN_CHAT_IDS.length === 0 || !bot) return;
+
+  const text = [
+    bold('New Payment Received'),
+    '',
+    `Student: ${payment.student_name}`,
+    `Amount: Rs ${payment.amount.toLocaleString('en-IN')}`,
+    `Method: ${payment.payment_method}`,
+    `Branch: ${payment.branch_name}`,
+    '',
+    `Tap Confirm to verify or Reject to undo.`,
+  ].join('\n');
+
+  const keyboard = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: 'Confirm', callback_data: `confirm_payment_${payment.id}` },
+          { text: 'Reject', callback_data: `reject_payment_${payment.id}` },
+        ],
+      ],
+    },
+  };
+
+  for (const chatId of ADMIN_CHAT_IDS) {
+    await respond(chatId, text, keyboard);
   }
 }

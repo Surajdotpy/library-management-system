@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../auth/auth.types.ts';
 import * as feesService from './fees.service.ts';
+import { pushPaymentAlert } from '../telegram/telegram-bot.service.ts';
 
 function getBranchFilter(user: AuthRequest['user']): number | undefined {
   if (!user) return undefined;
@@ -90,6 +91,14 @@ export async function recordPayment(req: Request, res: Response): Promise<void> 
     );
 
     res.status(201).json({ success: true, data, message: 'Payment recorded successfully' });
+
+    pushPaymentAlert({
+      id: data.id,
+      student_name: data.student_name,
+      amount: data.amount,
+      branch_name: data.branch_name,
+      payment_method: data.payment_method,
+    });
   } catch (error: any) {
     console.error('Record payment error:', error?.message ?? error);
     res.status(500).json({ success: false, error: 'Failed to record payment' });
