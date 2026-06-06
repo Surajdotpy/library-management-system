@@ -157,7 +157,8 @@ export async function confirmPayment(req: AuthRequest, res: Response) {
     }
 
     const user = requireAuthenticatedUser(req.user);
-    const payment = await paymentService.confirmPayment(paymentId, user.userId, undefined, data);
+    const branchId = resolveAuthorizedBranchId(user);
+    const payment = await paymentService.confirmPayment(paymentId, user.userId, branchId, data);
 
     res.status(200).json({
       success: true,
@@ -302,7 +303,14 @@ export async function createCashfreePaymentRequest(req: AuthRequest, res: Respon
 // POST /api/payments/cashfree/webhook - Handle Cashfree payment success webhooks
 export async function handleCashfreeWebhook(req: RawBodyRequest, res: Response) {
   try {
-    const rawBody = req.rawBody ?? JSON.stringify(req.body ?? {});
+    const rawBody = req.rawBody;
+
+    if (!rawBody) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing webhook request body',
+      });
+    }
     const timestamp = req.get('x-webhook-timestamp');
     const signature = req.get('x-webhook-signature');
 
@@ -377,10 +385,11 @@ export async function simulateCashfreeSuccess(req: AuthRequest, res: Response) {
     }
 
     const user = requireAuthenticatedUser(req.user);
+    const branchId = resolveAuthorizedBranchId(user);
     const payment = await paymentService.simulateCashfreePaymentSuccess(
       paymentId,
       user.userId,
-      undefined,
+      branchId,
     );
 
     res.status(200).json({

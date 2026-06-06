@@ -41,6 +41,7 @@ const CASHFREE_MIN_ORDER_EXPIRY_MINUTES = 16;
 const CASHFREE_MAX_ORDER_EXPIRY_MINUTES = (30 * 24 * 60) - 1;
 const DEFAULT_CASHFREE_ORDER_EXPIRY_MINUTES = 20;
 const processedCashfreeWebhooks = new Map<string, number>();
+const CASHFREE_API_TIMEOUT_MS = 30_000;
 
 function buildCashfreeHeaders(
   options: {
@@ -345,27 +346,35 @@ async function createCashfreeHostedUpiLink(
   let response: Response;
 
   try {
-    response = await fetch(`${getCashfreeApiBase(mode)}/orders/sessions`, {
-      method: 'POST',
-      headers: {
-        ...buildCashfreeHeaders({
-          includeCredentials: true,
-          includeContentType: true,
-          requestId: paymentSessionId,
-        }),
-        'x-client-device': 'desktop',
-        'x-client-os': 'windows',
-        'x-client-browser': 'chrome',
-      },
-      body: JSON.stringify({
-        payment_session_id: paymentSessionId,
-        payment_method: {
-          upi: {
-            channel: 'link',
-          },
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CASHFREE_API_TIMEOUT_MS);
+
+    try {
+      response = await fetch(`${getCashfreeApiBase(mode)}/orders/sessions`, {
+        method: 'POST',
+        headers: {
+          ...buildCashfreeHeaders({
+            includeCredentials: true,
+            includeContentType: true,
+            requestId: paymentSessionId,
+          }),
+          'x-client-device': 'desktop',
+          'x-client-os': 'windows',
+          'x-client-browser': 'chrome',
         },
-      }),
-    });
+        body: JSON.stringify({
+          payment_session_id: paymentSessionId,
+          payment_method: {
+            upi: {
+              channel: 'link',
+            },
+          },
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown network error';
     throw new Error(
@@ -437,15 +446,23 @@ export async function createCashfreePaymentSession(
   let response: Response;
 
   try {
-    response = await fetch(`${getCashfreeApiBase(mode)}/orders`, {
-      method: 'POST',
-      headers: buildCashfreeHeaders({
-        includeCredentials: true,
-        includeContentType: true,
-        requestId: normalizedOrderId,
-      }),
-      body: JSON.stringify(requestBody),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CASHFREE_API_TIMEOUT_MS);
+
+    try {
+      response = await fetch(`${getCashfreeApiBase(mode)}/orders`, {
+        method: 'POST',
+        headers: buildCashfreeHeaders({
+          includeCredentials: true,
+          includeContentType: true,
+          requestId: normalizedOrderId,
+        }),
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown network error';
     throw new Error(
