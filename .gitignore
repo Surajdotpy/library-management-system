@@ -38,3 +38,6 @@ pnpm-debug.log*
 
 # Release artifacts (VPS hosted)
 releases/
+
+# Docs (internal only)
+docs/
