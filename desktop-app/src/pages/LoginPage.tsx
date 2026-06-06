@@ -6,12 +6,13 @@ import { Input } from '@/components/ui/Input';
 import { authApi } from '@/lib/api';
 import { routes } from '@/config/routes';
 import { setStoredSession } from '@/lib/auth/session';
-import { Mail, Lock, Coffee, BookOpen } from 'lucide-react';
+import { Mail, Lock, Coffee, BookOpen, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -130,16 +131,25 @@ export default function LoginPage() {
                 fullWidth
               />
 
-              <Input
-                label="Password"
-                type="password"
-                icon={<Lock className="w-5 h-5" />}
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                fullWidth
-              />
+              <div className="relative">
+                <Input
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  icon={<Lock className="w-5 h-5" />}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  fullWidth
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-[38px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
 
               <Button
                 type="submit"
