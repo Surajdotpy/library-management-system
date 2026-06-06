@@ -7,14 +7,6 @@ export async function login(req: Request, res: Response) {
   try {
     const { email, password }: LoginRequest = req.body;
     
-    // Validate input
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email and password are required'
-      });
-    }
-    
     // Attempt login
     const result = await authService.loginUser(email, password);
     

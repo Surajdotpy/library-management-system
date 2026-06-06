@@ -1,4 +1,5 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
 import './config/load-env.ts';
 import { corsOptions } from './config/cors.ts';
@@ -17,6 +18,7 @@ import { generalApiRateLimiter } from './middleware/rate-limit.middleware.ts';
 const app: Application = express();
 const API_BODY_LIMIT = process.env.API_BODY_LIMIT || '1mb';
 
+app.use(helmet());
 app.use(
   cors(corsOptions),
 );
