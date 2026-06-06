@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../auth/auth.types.ts';
 import * as paymentService from './payments.service.ts';
+import { resolvePaymentAlert } from '../telegram/telegram-bot.service.ts';
 import type {
   CreateCashfreePaymentRequestDTO,
   ConfirmPaymentDTO,
@@ -159,6 +160,8 @@ export async function confirmPayment(req: AuthRequest, res: Response) {
     const user = requireAuthenticatedUser(req.user);
     const branchId = resolveAuthorizedBranchId(user);
     const payment = await paymentService.confirmPayment(paymentId, user.userId, branchId, data);
+
+    resolvePaymentAlert(paymentId, user.name ?? `Admin #${user.userId}`, 'confirmed');
 
     res.status(200).json({
       success: true,

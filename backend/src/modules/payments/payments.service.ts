@@ -35,8 +35,8 @@ import {
   resolveRequestedChannels,
 } from './payments.communication.ts';
 
-const PAYMENT_CYCLE_DAYS = 30;
-const PAYMENT_CYCLE_END_OFFSET = PAYMENT_CYCLE_DAYS - 1;
+export const PAYMENT_CYCLE_DAYS = 30;
+export const PAYMENT_CYCLE_END_OFFSET = PAYMENT_CYCLE_DAYS - 1;
 const DUE_SOON_WINDOW_DAYS = 7;
 const PUBLIC_PAYMENT_LINK_EXPIRES_IN = process.env.PAYMENT_PUBLIC_LINK_EXPIRES_IN || '48h';
 const PAYMENT_HISTORY_SELECT_FIELDS = `
@@ -154,7 +154,7 @@ interface PublicPaymentAccessPayload extends jwt.JwtPayload {
   paymentId: number;
 }
 
-function parseDateOnly(value: string): Date {
+export function parseDateOnly(value: string): Date {
   const [yearPart = '1970', monthPart = '1', dayPart = '1'] = value.split('-');
   const year = Number.parseInt(yearPart, 10);
   const month = Number.parseInt(monthPart, 10);
@@ -162,11 +162,11 @@ function parseDateOnly(value: string): Date {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-function formatDateOnly(value: Date): string {
+export function formatDateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function addDays(value: Date, days: number): Date {
+export function addDays(value: Date, days: number): Date {
   const nextValue = new Date(value);
   nextValue.setUTCDate(nextValue.getUTCDate() + days);
   return nextValue;
@@ -513,7 +513,7 @@ function generateCashfreeOrderId(studentId: number): string {
   return `CFPAY-${studentId}-${timestamp}-${randomSuffix}`;
 }
 
-function calculateCoverageWindow(todayDate: Date, latestCoverageEnd: Date | null) {
+export function calculateCoverageWindow(todayDate: Date, latestCoverageEnd: Date | null) {
   const coverageStartDate =
     latestCoverageEnd && latestCoverageEnd >= todayDate
       ? addDays(latestCoverageEnd, 1)

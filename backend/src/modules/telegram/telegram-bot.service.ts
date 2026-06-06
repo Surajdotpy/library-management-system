@@ -1,6 +1,7 @@
 import { Telegraf, type Context } from 'telegraf';
 import pool from '../../config/db.ts';
 import { sendReceiptEmail } from '../email/email.service.ts';
+import { calculateCoverageWindow, formatDateOnly, parseDateOnly } from '../payments/payments.service.ts';
 import type { TelegramSummary, PendingPaymentInfo, SeatInfo, AlertInfo, BranchInfo, TodayInfo, StudentSearchResult, RevenueInfo, NotificationItem, BookingInfo, DefaulterInfo } from './telegram-bot.types.ts';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
@@ -10,6 +11,7 @@ const DAILY_SUMMARY_HOUR = 20;
 let bot: any = null;
 let dailyTimer: ReturnType<typeof setInterval> | null = null;
 const rateLimitMap = new Map<string, number>();
+const pendingPaymentMessages = new Map<number, Array<{ chatId: number; messageId: number }>>();
 
 function isAuthorized(chatId: number | string): boolean {
   if (ADMIN_CHAT_IDS.length === 0) {
@@ -461,7 +463,7 @@ async function processPaymentConfirm(
   try {
     await client.query('BEGIN');
 
-    const check = await client.query(`SELECT id, status FROM fee_payments WHERE id = $1`, [paymentId]);
+    const check = await client.query(`SELECT id, status, student_id, branch_id FROM fee_payments WHERE id = $1`, [paymentId]);
     if (check.rows.length === 0) {
       await client.query('ROLLBACK');
       await respond(chatId, `Payment #${paymentId} not found`);
@@ -475,9 +477,17 @@ async function processPaymentConfirm(
     }
 
     if (isConfirm) {
+      const coverageResult = await client.query(
+        `SELECT coverage_end_date::text FROM fee_payments WHERE student_id = $1 AND status = 'paid' AND id != $2 ORDER BY coverage_end_date DESC LIMIT 1 FOR UPDATE`,
+        [check.rows[0].student_id, paymentId],
+      );
+      const today = new Date();
+      const latestEnd = coverageResult.rows[0]?.coverage_end_date ? parseDateOnly(coverageResult.rows[0].coverage_end_date) : null;
+      const { coverageStartDate, coverageEndDate } = calculateCoverageWindow(today, latestEnd);
+
       const updateResult = await client.query(
-        `UPDATE fee_payments SET status = 'paid', verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
-        [paymentId],
+        `UPDATE fee_payments SET status = 'paid', coverage_start_date = $2, coverage_end_date = $3, payment_date = $4, verification_source = 'superadmin_review', verified_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'`,
+        [paymentId, formatDateOnly(coverageStartDate), formatDateOnly(coverageEndDate), formatDateOnly(today)],
       );
 
       if (updateResult.rowCount === 0) {
@@ -544,6 +554,8 @@ async function processPaymentConfirm(
 
         await client.query('COMMIT');
 
+        pendingPaymentMessages.delete(paymentId);
+
         const ioServer = (globalThis as any).io;
         if (ioServer && typeof ioServer.to === 'function') {
           ioServer.to('role:superadmin').emit('payment_activity', {
@@ -559,6 +571,7 @@ async function processPaymentConfirm(
       }
 
       await client.query('COMMIT');
+      pendingPaymentMessages.delete(paymentId);
       await respond(chatId, `Payment #${paymentId} confirmed`);
       return { processed: true };
     }
@@ -574,7 +587,45 @@ async function processPaymentConfirm(
       return { processed: false };
     }
 
+    const rejectInfo = await client.query(`
+      SELECT fp.amount, s.name AS student_name, s.branch_id, fp.student_id
+      FROM fee_payments fp
+      JOIN students s ON s.id = fp.student_id
+      WHERE fp.id = $1
+    `, [paymentId]);
+
+    const rj = rejectInfo.rows[0];
+    if (rj) {
+      await client.query(`
+        INSERT INTO notifications (type, severity, branch_id, title, description, action_route, metadata, source_key)
+        VALUES ('payment_rejected', 'warning', $2, $3, $4, '/payments', $5, $6)
+      `, [
+        paymentId,
+        rj.branch_id,
+        `${rj.student_name} payment rejected (Telegram)`,
+        `Rs ${Number(rj.amount).toLocaleString('en-IN')} payment for ${rj.student_name} was rejected.`,
+        JSON.stringify({ payment_id: paymentId, student_id: rj.student_id, amount: Number(rj.amount) }),
+        `payment-rejected-${paymentId}`,
+      ]);
+    }
+
     await client.query('COMMIT');
+
+    pendingPaymentMessages.delete(paymentId);
+
+    const r = rejectInfo.rows[0];
+    if (r) {
+      const ioServer = (globalThis as any).io;
+      if (ioServer && typeof ioServer.to === 'function') {
+        ioServer.to('role:superadmin').emit('payment_activity', {
+          paymentId,
+          studentId: r.student_id,
+          branchId: r.branch_id,
+          status: 'rejected',
+        });
+      }
+    }
+
     await respond(chatId, `Payment #${paymentId} rejected`);
     return { processed: true };
   } catch (error: any) {
@@ -589,19 +640,20 @@ async function processPaymentConfirm(
 
 // ─── Bot ───────────────────────────────────────────
 
-async function respond(chatId: number | string, text: string, extra: Record<string, any> = {}): Promise<void> {
+async function respond(chatId: number | string, text: string, extra: Record<string, any> = {}): Promise<any> {
   if (!bot) {
     console.error('Bot not initialized');
-    return;
+    return null;
   }
   try {
-    await bot.telegram.sendMessage(Number(chatId), text, { parse_mode: 'HTML', ...extra });
+    return await bot.telegram.sendMessage(Number(chatId), text, { parse_mode: 'HTML', ...extra });
   } catch (error: any) {
     console.error('Telegram sendMessage error:', error?.message ?? error);
     try {
-      await bot.telegram.sendMessage(Number(chatId), text, extra);
+      return await bot.telegram.sendMessage(Number(chatId), text, extra);
     } catch (e2: any) {
       console.error('Telegram sendMessage fallback also failed:', e2?.message ?? e2);
+      return null;
     }
   }
 }
@@ -892,7 +944,33 @@ export async function pushPaymentAlert(payment: {
     },
   };
 
+  const messages: Array<{ chatId: number; messageId: number }> = [];
   for (const chatId of ADMIN_CHAT_IDS) {
-    await respond(chatId, text, keyboard);
+    const sent = await respond(chatId, text, keyboard);
+    if (sent && sent.message_id) {
+      messages.push({ chatId: Number(chatId), messageId: sent.message_id });
+    }
   }
+  if (messages.length > 0) {
+    pendingPaymentMessages.set(payment.id, messages);
+  }
+}
+
+export async function resolvePaymentAlert(paymentId: number, resolvedBy: string, action: 'confirmed' | 'rejected'): Promise<void> {
+  const messages = pendingPaymentMessages.get(paymentId);
+  if (!messages || messages.length === 0 || !bot) return;
+
+  const actionText = action === 'confirmed' ? 'Confirmed' : 'Rejected';
+  for (const { chatId, messageId } of messages) {
+    try {
+      await bot.telegram.editMessageReplyMarkup(chatId, messageId, undefined, { inline_keyboard: [] });
+      await bot.telegram.editMessageText(
+        chatId,
+        messageId,
+        undefined,
+        { parse_mode: 'HTML', text: `${bold('Payment #' + paymentId)} — ${actionText} by ${resolvedBy}` },
+      );
+    } catch { }
+  }
+  pendingPaymentMessages.delete(paymentId);
 }
