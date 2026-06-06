@@ -5,7 +5,10 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"],
-    "rewriteRelativeImportExtensions": true
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": false,
+    "declaration": false,
+    "declarationMap": false
   },
   "include": [
     "src/**/*"

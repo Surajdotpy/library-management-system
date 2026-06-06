@@ -55,20 +55,8 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/', (_req: Request, res: Response) => {
   res.status(200).json({
     success: true,
-    message: 'Study Library Management System API',
+    message: 'Library Management API',
     version: '1.0.1',
-    endpoints: {
-      health: '/health',
-      auth: '/api/auth/login',
-      dashboard: '/api/dashboard/summary',
-      notifications: '/api/notifications',
-      branches: '/api/branches',
-      admins: '/api/users/admins',
-      students: '/api/students',
-      attendance: '/api/attendance',
-      payments: '/api/payments',
-      seats: '/api/seats',
-    },
   });
 });
 
