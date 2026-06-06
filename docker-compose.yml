@@ -27,6 +27,7 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./releases:/usr/share/nginx/html/releases
     depends_on:
       - backend
 

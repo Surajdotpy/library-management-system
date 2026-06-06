@@ -36,8 +36,16 @@ jobs:
         run: npm install
         working-directory: desktop-app
 
-      - name: Build & publish Electron app
-        run: npm run electron:build -- --publish always
+      - name: Build Electron app
+        run: npm run electron:build --win
         working-directory: desktop-app
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "desktop-app/release/*"
+          target: "~/apps/library-management-system/releases"
+          strip_components: 2
