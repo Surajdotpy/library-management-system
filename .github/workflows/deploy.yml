@@ -54,6 +54,15 @@ jobs:
         env:
           VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
 
+      - name: Delete existing release for this tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release delete "v$VERSION" --yes --repo ${{ github.repository }} 2>/dev/null || true
+        working-directory: desktop-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Package & publish Electron app to GitHub Releases
         run: npx electron-builder --win --publish always
         working-directory: desktop-app
