@@ -24,6 +24,7 @@ jobs:
 
   build-and-publish:
     needs: deploy-backend
+    if: ${{ always() }}
     runs-on: windows-latest
 
     steps:
