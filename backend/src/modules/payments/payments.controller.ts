@@ -161,7 +161,7 @@ export async function confirmPayment(req: AuthRequest, res: Response) {
     const branchId = resolveAuthorizedBranchId(user);
     const payment = await paymentService.confirmPayment(paymentId, user.userId, branchId, data);
 
-    resolvePaymentAlert(paymentId, user.name ?? `Admin #${user.userId}`, 'confirmed');
+    resolvePaymentAlert(paymentId, user.email ?? `Admin #${user.userId}`, 'confirmed');
 
     res.status(200).json({
       success: true,
