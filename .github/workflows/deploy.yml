@@ -39,6 +39,7 @@ jobs:
         working-directory: desktop-app
 
       - name: Push version tag
+        shell: bash
         run: |
           VERSION=$(node -p "require('./package.json').version")
           git config user.name "CI Bot"
