@@ -37,6 +37,15 @@ jobs:
         run: npm install
         working-directory: desktop-app
 
+      - name: Push version tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git config user.name "CI Bot"
+          git config user.email "ci@coffeeaurkitaab.co.in"
+          git tag -f "v$VERSION"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "v$VERSION"
+        working-directory: desktop-app
+
       - name: Build frontend
         run: npm run build
         working-directory: desktop-app
