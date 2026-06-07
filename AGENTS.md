@@ -98,6 +98,6 @@ All API routes under `/api`:
 ## Deployment
 
 CI/CD via GitHub Actions (`.github/workflows/deploy.yml`):
-- Push to `main` → auto-deploy backend on VPS + build + publish desktop app to VPS releases/
-- Desktop app downloads/updates via VPS nginx (electron-updater with `publish: generic`)
+- Push to `main` → auto-deploy backend on VPS + build + publish desktop app to GitHub Releases
+- Desktop app downloads/updates via GitHub Releases (electron-updater with `publish: github`)
 - Manual fallback: `ssh VPS → git pull → docker compose up -d --build`
