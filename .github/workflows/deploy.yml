@@ -52,7 +52,7 @@ jobs:
         run: npm run build
         working-directory: desktop-app
         env:
-          VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
+          VITE_API_BASE_URL: http://coffeeaurkitaab.co.in/api
 
       - name: Delete existing release for this tag
         shell: bash
