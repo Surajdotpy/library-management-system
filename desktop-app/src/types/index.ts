@@ -102,6 +102,17 @@ export type {
   SeatBookingStatus,
 } from './seat.types';
 
+// Fee types
+export type {
+  FeeDashboard,
+  StudentFeeStatus,
+  OverdueStudent,
+  DueGenerationResult,
+  FeePaymentRecord,
+  FeePaymentDetail,
+  RecordManualPaymentRequest,
+} from './fee.types';
+
 // Common types
 export interface ApiResponse<T> {
   success: boolean;

@@ -463,7 +463,7 @@ async function processPaymentConfirm(
   try {
     await client.query('BEGIN');
 
-    const check = await client.query(`SELECT id, status, student_id, branch_id FROM fee_payments WHERE id = $1`, [paymentId]);
+    const check = await client.query(`SELECT id, status, student_id FROM fee_payments WHERE id = $1`, [paymentId]);
     if (check.rows.length === 0) {
       await client.query('ROLLBACK');
       await respond(chatId, `Payment #${paymentId} not found`);
@@ -891,7 +891,14 @@ export async function startTelegramBot(): Promise<void> {
       ]);
     } catch {}
 
-    bot.launch();
+    bot.launch().catch((err: any) => {
+      const msg = err?.message ?? String(err);
+      console.error('Telegram bot launch error:', msg);
+      if (msg.includes('409: conflict')) {
+        console.log('↳ Another bot instance is already running — continuing without Telegram');
+        bot = null;
+      }
+    });
     console.log('Telegram bot started');
     setupDailyCron();
   } catch (error: any) {

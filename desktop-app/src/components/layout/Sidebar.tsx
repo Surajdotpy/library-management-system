@@ -8,6 +8,7 @@ import {
   DollarSign, 
   UserPlus,
   BarChart3,
+  Wallet,
   LogOut,
   Coffee,
   BookOpen
@@ -27,6 +28,7 @@ export function Sidebar({ userRole }: SidebarProps) {
     { icon: Users, label: 'Students', path: routes.students },
     { icon: Armchair, label: 'Seats', path: routes.seats },
     { icon: CheckSquare, label: 'Attendance', path: routes.attendance },
+    { icon: Wallet, label: 'Fees', path: routes.fees },
     { icon: DollarSign, label: 'Payments', path: routes.payments },
     ...(userRole === 'superadmin'
       ? [

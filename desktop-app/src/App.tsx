@@ -12,6 +12,7 @@ const PaymentsPage = lazy(() => import('@/pages/PaymentsPage'));
 const AdminManagementPage = lazy(() => import('@/pages/AdminManagementPage'));
 const TestPage = lazy(() => import('@/pages/TestPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
+const FeesPage = lazy(() => import('@/pages/FeesPage'));
 import StudentPaymentPage from "@/pages/StudentPaymentPage";
 function ProtectedRoute() {
   const user = getStoredUser();
@@ -72,6 +73,7 @@ function App() {
             <Route path={routes.seats} element={<SeatsPage />} />
             <Route path={routes.attendance} element={<AttendancePage />} />
             <Route path={routes.payments} element={<PaymentsPage />} />
+            <Route path={routes.fees} element={<FeesPage />} />
             <Route path={routes.test} element={<TestPage />} />
           </Route>
 

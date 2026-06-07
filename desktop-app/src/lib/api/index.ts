@@ -13,3 +13,4 @@ export { notificationsApi } from './notifications';
 export { branchesApi } from './branches';
 export { usersApi } from './users';
 export { seatsApi } from './seats';
+export { feesApi } from './fees';

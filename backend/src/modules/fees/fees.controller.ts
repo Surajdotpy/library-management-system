@@ -84,7 +84,7 @@ export async function recordPayment(req: Request, res: Response): Promise<void> 
       amount,
       fee_month,
       fee_year,
-      payment_method ?? 'cash',
+      payment_method ?? 'upi',
       transaction_id ?? null,
       notes ?? null,
       user.userId,

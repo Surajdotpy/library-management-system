@@ -172,7 +172,11 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 process.on('unhandledRejection', (reason: any) => {
-  console.error('❌ Unhandled Rejection:', reason);
+  console.error('⚠️ Unhandled Rejection:', reason?.message ?? reason);
+  if (reason?.message?.includes('409: conflict')) {
+    console.log('↳ Ignoring Telegram bot conflict (likely duplicate instance)');
+    return;
+  }
   gracefulShutdown('unhandledRejection');
 });
 

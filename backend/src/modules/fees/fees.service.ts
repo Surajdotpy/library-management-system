@@ -128,7 +128,7 @@ export async function generateDues(month: number, year: number, branchId?: numbe
 
       await pool.query(`
         INSERT INTO fee_payments (student_id, amount, fee_month, fee_year, status, payment_date, coverage_start_date, coverage_end_date, payment_method)
-        VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, 'pending')
+        VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, 'upi')
       `, [student.id, student.monthly_fee, month, year, `${year}-${String(month).padStart(2, '0')}-28`, coverageStart, coverageEnd]);
 
       result.generated++;
@@ -157,6 +157,18 @@ export async function recordManualPayment(
   const result = await pool.query(`
     INSERT INTO fee_payments (student_id, amount, fee_month, fee_year, status, payment_date, coverage_start_date, coverage_end_date, payment_method, transaction_id, notes, collected_by, verification_source)
     VALUES ($1, $2, $3, $4, 'paid', CURRENT_DATE, $5, $6, $7, $8, $9, $10, 'manual_entry')
+    ON CONFLICT (student_id, fee_month, fee_year)
+    DO UPDATE SET
+      status = 'paid',
+      amount = EXCLUDED.amount,
+      payment_date = CURRENT_DATE,
+      coverage_start_date = EXCLUDED.coverage_start_date,
+      coverage_end_date = EXCLUDED.coverage_end_date,
+      payment_method = EXCLUDED.payment_method,
+      transaction_id = EXCLUDED.transaction_id,
+      notes = EXCLUDED.notes,
+      collected_by = EXCLUDED.collected_by,
+      verification_source = 'manual_entry'
     RETURNING id, payment_date
   `, [studentId, amount, feeMonth, feeYear, coverageStart, coverageEnd, paymentMethod, transactionId, notes, collectedBy]);
 
@@ -226,7 +238,7 @@ export async function getPaymentHistory(
   year?: number,
   limit: number = 50,
   offset: number = 0,
-): Promise<{ payments: FeePaymentRecord[]; total: number }> {
+): Promise<{ data: FeePaymentRecord[]; total: number }> {
   const conditions: string[] = [];
   const params: any[] = [];
   let paramIndex = 1;
@@ -284,5 +296,5 @@ export async function getPaymentHistory(
     LIMIT $${paramIndex++} OFFSET $${paramIndex}
   `, params);
 
-  return { payments: payments.rows, total: countResult.rows[0]?.total ?? 0 };
+  return { data: payments.rows, total: countResult.rows[0]?.total ?? 0 };
 }
