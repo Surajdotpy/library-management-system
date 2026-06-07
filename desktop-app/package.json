@@ -47,10 +47,8 @@
       "shortcutName": "Coffee aur Kitaab"
     },
     "publish": {
-      "provider": "github",
-      "owner": "Surajdotpy",
-      "repo": "library-management-system",
-      "releaseType": "release"
+      "provider": "generic",
+      "url": "https://www.coffeeaurkitaab.co.in/UZvgJNxe/releases"
     }
   },
   "dependencies": {

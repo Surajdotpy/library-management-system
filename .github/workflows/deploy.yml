@@ -22,7 +22,7 @@ jobs:
             git pull
             docker compose up -d --build
 
-  build-and-publish:
+  build-desktop:
     needs: deploy-backend
     runs-on: windows-latest
 
@@ -37,9 +37,39 @@ jobs:
         run: npm install
         working-directory: desktop-app
 
-      - name: Build & publish Electron app to GitHub Releases
-        run: npm run build && npx electron-builder --win --publish always
+      - name: Build Electron app
+        run: npm run electron:build --win
         working-directory: desktop-app
         env:
           VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release
+          path: desktop-app/release/*
+
+  upload-to-vps:
+    needs: build-desktop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-release
+          path: release
+
+      - name: Setup SSH key & Upload to VPS
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          for i in 1 2 3; do
+            ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts && break
+            echo "ssh-keyscan attempt $i failed, retrying..." && sleep 3
+          done
+          for i in 1 2 3; do
+            timeout 900 scp -r release/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/apps/library-management-system/releases/ && break
+            echo "SCP attempt $i failed, retrying..." && sleep 3
+          done
