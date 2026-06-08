@@ -48,7 +48,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package & publish Electron app to GitHub Releases
-        run: npx electron-builder --win --publish always
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            npx electron-builder --win --publish always && exit 0
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          exit 1
         working-directory: desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
