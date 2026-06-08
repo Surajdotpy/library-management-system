@@ -4,9 +4,11 @@ import {
   BarChart3,
   CheckSquare,
   ChevronDown,
+  Download,
   LayoutDashboard,
   Loader2,
   LogOut,
+  RefreshCcw,
   Search,
   User,
   UserPlus,
@@ -328,10 +330,32 @@ export function Header({
     });
   };
 
-  const handleNavigate = (path: string) => {
-    navigate(path);
-    setIsProfileMenuOpen(false);
-    resetSearch();
+  const [updateState, setUpdateState] = useState<{
+    status: string;
+    currentVersion: string;
+    targetVersion: string | null;
+    progress: number | null;
+    error: string | null;
+  }>({ status: 'idle', currentVersion: '', targetVersion: null, progress: null, error: null });
+
+  useEffect(() => {
+    const win = window as any;
+    if (!win.appUpdates) return;
+
+    win.appUpdates.getState().then((state: any) => setUpdateState(state));
+
+    const unsub = win.appUpdates.subscribe((state: any) => setUpdateState(state));
+    return () => unsub?.();
+  }, []);
+
+  const handleCheckUpdate = () => {
+    const win = window as any;
+    if (win.appUpdates) win.appUpdates.check();
+  };
+
+  const handleDownloadUpdate = () => {
+    const win = window as any;
+    if (win.appUpdates) win.appUpdates.download();
   };
 
   const handleStudentResultClick = (student: Student) => {
@@ -566,6 +590,62 @@ export function Header({
         </div>
 
         <div ref={notificationsContainerRef} className="relative flex items-start">
+          {updateState.currentVersion && (
+            <div className="group relative mr-1 flex items-center gap-2 rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs transition-colors hover:border-purple-300 hover:bg-purple-50">
+              <span className="font-semibold text-gray-500">v{updateState.currentVersion}</span>
+
+              {updateState.status === 'checking' && (
+                <Loader2 className="h-3 w-3 animate-spin text-purple-500" />
+              )}
+
+              {updateState.status === 'downloading' && (
+                <span className="text-purple-600 font-medium">{updateState.progress}%</span>
+              )}
+
+              {updateState.status === 'available' && (
+                <button
+                  type="button"
+                  onClick={handleDownloadUpdate}
+                  className="flex items-center gap-1 text-purple-600 font-medium hover:text-purple-800"
+                >
+                  <Download className="h-3 w-3" />
+                  v{updateState.targetVersion}
+                </button>
+              )}
+
+              {updateState.status === 'downloaded' && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-green-600 font-medium"
+                >
+                  <RefreshCcw className="h-3 w-3" />
+                  Restart
+                </button>
+              )}
+
+              {updateState.status === 'error' && (
+                <button
+                  type="button"
+                  onClick={handleCheckUpdate}
+                  className="flex items-center gap-1 text-red-500 hover:text-red-700"
+                >
+                  <RefreshCcw className="h-3 w-3" />
+                  Retry
+                </button>
+              )}
+
+              {updateState.status === 'idle' && (
+                <button
+                  type="button"
+                  onClick={handleCheckUpdate}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <RefreshCcw className="h-3 w-3 text-gray-400 hover:text-purple-600" />
+                </button>
+              )}
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => {
