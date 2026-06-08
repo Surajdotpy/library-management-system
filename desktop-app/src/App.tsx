@@ -49,8 +49,6 @@ function SuperAdminRoute() {
 }
 
 function App() {
-  // v1.0.5 — fee module + auth fixes
-  
   const fallbackRoute = getStoredUser() ? routes.dashboard : routes.login;
 
   return (
