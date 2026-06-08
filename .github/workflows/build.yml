@@ -1,0 +1,54 @@
+name: Build Desktop App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'desktop-app/**'
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: desktop-app
+
+      - name: Push version tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git config user.name "CI Bot"
+          git config user.email "ci@coffeeaurkitaab.co.in"
+          git tag -f "v$VERSION"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "v$VERSION"
+        working-directory: desktop-app
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: desktop-app
+        env:
+          VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
+
+      - name: Delete existing release for this tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release delete "v$VERSION" --yes --repo ${{ github.repository }} 2>/dev/null || true
+        working-directory: desktop-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package & publish Electron app to GitHub Releases
+        run: npx electron-builder --win --publish always
+        working-directory: desktop-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
