@@ -16,7 +16,6 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          retry: 2
           script: |
             cd ~/apps/library-management-system
             git pull
