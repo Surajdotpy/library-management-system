@@ -17,9 +17,20 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd ~/apps/library-management-system
-            git pull
-            docker compose up -d --build
+            set -e
+            cd ~/apps/library-management-system || exit 1
+            git pull origin main || exit 1
+            docker compose up -d --build || exit 1
+            echo "Waiting for backend to become healthy..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+                echo "Backend is healthy."
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Backend health check timed out." >&2
+            exit 1
 
   build-and-publish:
     needs: deploy-backend

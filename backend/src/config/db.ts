@@ -17,7 +17,7 @@ const poolConfig: PoolConfig = {
   // Connection pool settings
   max: 20, // Maximum connections in pool
   idleTimeoutMillis: 30000, // Close idle connections after 30s
-  connectionTimeoutMillis: 2000, // Timeout if can't connect in 2s
+  connectionTimeoutMillis: 5000,
   
   // SSL for production and any explicitly secured deployments.
   ...(shouldUseSsl && {

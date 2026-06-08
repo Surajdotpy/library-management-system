@@ -70,7 +70,7 @@ async function ensureUniqueEmail(email: string): Promise<void> {
     `
       SELECT id
       FROM users
-      WHERE email = $1
+      WHERE LOWER(email) = LOWER($1)
       LIMIT 1
     `,
     [email],

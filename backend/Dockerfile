@@ -1,19 +1,15 @@
-FROM node:22
-
+FROM node:22 AS build
 WORKDIR /app
-
 COPY package*.json ./
-
-RUN npm install && npm cache clean --force
-
+RUN npm ci
 COPY . .
-
 RUN npm run build
 
-RUN chown -R node:node /app
-
+FROM node:22 AS production
+WORKDIR /app
+COPY --from=build /app/package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/dist ./dist
 USER node
-
 EXPOSE 5000
-
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]

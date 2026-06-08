@@ -21,7 +21,7 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   const query = `
     SELECT *
     FROM users
-    WHERE email = $1 AND is_active = true
+    WHERE LOWER(email) = LOWER($1) AND is_active = true
   `;
 
   const result = await pool.query(query, [email]);
