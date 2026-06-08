@@ -19,7 +19,8 @@ jobs:
           script: |
             set -e
             cd ~/apps/library-management-system || exit 1
-            git pull origin main || exit 1
+            git fetch origin main || exit 1
+            git reset --hard origin/main || exit 1
             docker compose up -d --build || exit 1
             echo "Waiting for backend to become healthy..."
             for i in $(seq 1 30); do
