@@ -1,10 +1,14 @@
 {
   "name": "coffee-aur-kitaab",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Library Management System for Coffee aur Kitaab",
   "author": "Coffee aur Kitaab",
   "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Surajdotpy/library-management-system.git"
+  },
   "homepage": "./",
   "scripts": {
     "dev": "vite",
