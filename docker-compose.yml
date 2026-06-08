@@ -21,6 +21,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: password
       DATABASE_NAME: library
+      DATABASE_SSL: "false"
       FRONTEND_URL: https://coffeeaurkitaab.co.in
     env_file:
       - ./backend/.env

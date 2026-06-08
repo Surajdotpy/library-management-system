@@ -3,7 +3,8 @@ import { Pool, type PoolConfig } from 'pg';
 import './load-env.ts';
 
 const shouldUseSsl =
-  process.env.DATABASE_SSL === 'true' || process.env.NODE_ENV === 'production';
+  process.env.DATABASE_SSL === 'true' ||
+  (process.env.NODE_ENV === 'production' && process.env.DATABASE_SSL !== 'false');
 const allowSelfSignedCertificates = process.env.DATABASE_SSL_ALLOW_SELF_SIGNED === 'true';
 const databaseCaPath = process.env.DATABASE_SSL_CA_PATH?.trim();
 
