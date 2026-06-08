@@ -194,6 +194,47 @@ export async function confirmPayment(req: AuthRequest, res: Response) {
   }
 }
 
+// POST /api/payments/:paymentId/cancel - Cancel a pending payment
+export async function cancelPayment(req: AuthRequest, res: Response) {
+  try {
+    const paymentId = Number.parseInt(req.params.paymentId as string, 10);
+
+    if (Number.isNaN(paymentId)) {
+      return badRequest(res, 'Invalid payment ID');
+    }
+
+    const user = requireAuthenticatedUser(req.user);
+    const branchId = resolveAuthorizedBranchId(user);
+    await paymentService.cancelPayment(paymentId, user.userId, branchId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment cancelled',
+    });
+  } catch (error: any) {
+    if (isAuthorizationError(error)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    console.error('Cancel payment error:', error);
+
+    if (
+      error.message.includes('not found') ||
+      error.message.includes('Only pending payments')
+    ) {
+      return badRequest(res, error.message);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to cancel payment',
+    });
+  }
+}
+
 // POST /api/payments/webhooks/confirm - Confirm a pending payment from an external payment system
 export async function confirmPaymentWebhook(req: Request, res: Response) {
   try {

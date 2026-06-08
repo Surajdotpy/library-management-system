@@ -72,6 +72,10 @@ export const paymentsApi = {
     return response.data.data;
   },
 
+  async cancelPayment(paymentId: number): Promise<void> {
+    await apiClient.post(`/payments/${paymentId}/cancel`);
+  },
+
   async getAll(options: PaymentQueryOptions = {}): Promise<PaginatedResponse<Payment>> {
     const response = await apiClient.get<ApiResponse<PaginatedResponse<Payment>>>('/payments', {
       params: {

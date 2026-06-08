@@ -39,6 +39,12 @@ router.post(
   paymentController.confirmPayment,
 );
 
+router.post(
+  '/:paymentId/cancel',
+  authenticateToken,
+  paymentController.cancelPayment,
+);
+
 // -------------------- REMINDERS --------------------
 router.post('/reminders/send', authenticateToken, paymentController.sendPaymentReminder);
 router.post('/reminders/run-daily', authenticateToken, paymentController.runReminderBatch);

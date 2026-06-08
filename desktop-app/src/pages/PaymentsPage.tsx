@@ -701,6 +701,27 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleCancelCashfreePayment = async (payment: Payment) => {
+    setPaymentActionKey(`cancel-${payment.id}`);
+    setPaymentError(null);
+    setPaymentSuccess(null);
+
+    try {
+      await paymentsApi.cancelPayment(payment.id);
+      setPaymentSuccess(`Payment ${payment.receipt_number} cancelled.`);
+      setCashfreeRequest(null);
+      await Promise.all([
+        fetchPaymentsData(false),
+        refreshSelectedStudentPayments(payment.student_id),
+      ]);
+    } catch (err: any) {
+      console.error('Failed to cancel payment.', err);
+      setPaymentError(err.response?.data?.error || 'Failed to cancel payment');
+    } finally {
+      setPaymentActionKey(null);
+    }
+  };
+
   const handleCopyCashfreeScanValue = async () => {
     if (!cashfreeShareValue) {
       return;
@@ -1346,7 +1367,7 @@ export default function PaymentsPage() {
                             </div>
 
                             {isSuperAdmin && selectedPendingCashfreePayment && (
-                              <div className="pt-1">
+                              <div className="pt-1 space-y-2">
                                 <Button
                                   type="button"
                                   variant="secondary"
@@ -1364,6 +1385,24 @@ export default function PaymentsPage() {
                                   className="w-full"
                                 >
                                   Simulate Cashfree Success
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() =>
+                                    void handleCancelCashfreePayment(selectedPendingCashfreePayment)
+                                  }
+                                  disabled={
+                                    paymentActionKey ===
+                                    `cancel-${selectedPendingCashfreePayment.id}`
+                                  }
+                                  isLoading={
+                                    paymentActionKey ===
+                                    `cancel-${selectedPendingCashfreePayment.id}`
+                                  }
+                                  className="w-full border-red-200 text-red-700 hover:bg-red-50"
+                                >
+                                  Cancel Payment
                                 </Button>
                               </div>
                             )}

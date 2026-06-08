@@ -1262,6 +1262,57 @@ export async function recordPayment(
   }
 }
 
+export async function cancelPayment(
+  paymentId: number,
+  cancelledBy: number,
+  branchId?: number,
+): Promise<void> {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const lockResult = await client.query<{ id: number; status: string; student_id: number }>(
+      `SELECT id, status, student_id FROM fee_payments WHERE id = $1
+       ${branchId != null ? ' AND (SELECT branch_id FROM students WHERE id = fee_payments.student_id) = $2' : ''}
+       FOR UPDATE`,
+      branchId != null ? [paymentId, branchId] : [paymentId],
+    );
+
+    const payment = lockResult.rows[0];
+
+    if (!payment) {
+      throw new Error('Payment not found');
+    }
+
+    if (payment.status !== 'pending') {
+      throw new Error('Only pending payments can be cancelled');
+    }
+
+    await client.query(
+      `UPDATE fee_payments SET status = 'rejected', verification_source = 'admin_cancel', verified_by = $1, verified_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [cancelledBy, paymentId],
+    );
+
+    const ioServer = (globalThis as any).io;
+
+    if (ioServer && typeof ioServer.to === 'function') {
+      ioServer.to('role:superadmin').emit('payment_activity', {
+        paymentId,
+        studentId: payment.student_id,
+        status: 'cancelled',
+      });
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function createCashfreePaymentRequest(
   data: CreateCashfreePaymentRequestDTO,
   requestedBy: number,
