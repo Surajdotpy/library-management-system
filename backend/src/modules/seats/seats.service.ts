@@ -274,7 +274,7 @@ export async function bulkCreateSeats(
     const seatNum = start_number + i;
     const baseIdx = paramValues.length + 1;
     values.push(`($${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4})`);
-    paramValues.push(branch_id, String(seatNum), floor_name ?? '', 'active', '');
+    paramValues.push(branch_id, String(seatNum), floor_name ?? '', 'active', 'general');
   }
 
   const query = `
