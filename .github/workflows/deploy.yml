@@ -24,13 +24,14 @@ jobs:
             docker compose up -d --build || exit 1
             echo "Waiting for backend to become healthy..."
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+              if docker exec backend curl -sf http://localhost:5000/health > /dev/null 2>&1; then
                 echo "Backend is healthy."
                 exit 0
               fi
               sleep 2
             done
-            echo "Backend health check timed out." >&2
+            echo "Backend health check timed out. Checking logs..."
+            docker logs backend --tail 50
             exit 1
 
   build-and-publish:
