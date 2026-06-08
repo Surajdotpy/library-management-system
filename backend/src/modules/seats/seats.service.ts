@@ -273,12 +273,12 @@ export async function bulkCreateSeats(
   for (let i = 0; i < count; i++) {
     const seatNum = start_number + i;
     const baseIdx = paramValues.length + 1;
-    values.push(`($${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3})`);
-    paramValues.push(branch_id, String(seatNum), floor_name ?? '', 'active');
+    values.push(`($${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4})`);
+    paramValues.push(branch_id, String(seatNum), floor_name ?? '', 'active', '');
   }
 
   const query = `
-    INSERT INTO seats (branch_id, seat_number, floor_name, status)
+    INSERT INTO seats (branch_id, seat_number, floor_name, status, section)
     VALUES ${values.join(', ')}
     ON CONFLICT DO NOTHING
     RETURNING id
