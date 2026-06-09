@@ -6,7 +6,7 @@ import type { TelegramSummary, PendingPaymentInfo, SeatInfo, AlertInfo, BranchIn
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const ADMIN_CHAT_IDS = (process.env.TELEGRAM_ADMIN_CHAT_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
-const DAILY_SUMMARY_HOUR = 2;
+const DAILY_SUMMARY_HOUR = 14;
 const DAILY_SUMMARY_MINUTE = 30;
 
 let bot: any = null;
@@ -683,7 +683,7 @@ function setupDailyCron(): void {
     dailyTimer = setInterval(sendDailySummary, 24 * 60 * 60 * 1000);
   }, ms);
 
-  console.log(`Telegram daily summary scheduled at ${DAILY_SUMMARY_HOUR}:${String(DAILY_SUMMARY_MINUTE).padStart(2, '0')} UTC (8:${String(DAILY_SUMMARY_MINUTE).padStart(2, '0')} AM IST)`);
+  console.log(`Telegram daily summary scheduled at ${DAILY_SUMMARY_HOUR}:${String(DAILY_SUMMARY_MINUTE).padStart(2, '0')} UTC (8:${String(DAILY_SUMMARY_MINUTE).padStart(2, '0')} PM IST)`);
 }
 
 async function handleCommand(chatId: number, text: string): Promise<void> {
