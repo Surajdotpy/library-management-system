@@ -19,7 +19,6 @@ services:
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_USER: postgres
-      DATABASE_PASSWORD: password
       DATABASE_NAME: library
       DATABASE_SSL: "false"
       FRONTEND_URL: https://coffeeaurkitaab.co.in
