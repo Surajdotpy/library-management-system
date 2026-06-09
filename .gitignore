@@ -41,3 +41,7 @@ releases/
 
 # Docs (internal only)
 docs/
+*.pem
+*.key
+*.p12
+library_backup.sql
