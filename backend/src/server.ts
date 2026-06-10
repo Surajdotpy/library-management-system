@@ -6,12 +6,36 @@ import type { Server as HttpServer } from 'http';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { findUserById, verifyToken } from './modules/auth/auth.service.ts';
+import { runReminderBatch } from './modules/payments/payments.service.ts';
 import { startTelegramBot, stopTelegramBot } from './modules/telegram/telegram-bot.service.ts';
 
 const PORT: number = parseInt(process.env.PORT || '5000', 10);
 
 let server: HttpServer;
 let io: SocketIOServer;
+let reminderTimer: ReturnType<typeof setInterval> | null = null;
+
+function setupDailyReminders(): void {
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 13, 30, 0);
+  let ms = target.getTime() - now.getTime();
+  if (ms < 0) ms += 24 * 60 * 60 * 1000;
+
+  setTimeout(() => {
+    console.log('Running daily payment reminders...');
+    runReminderBatch(1, undefined, 'both').catch((err: Error) =>
+      console.error('Daily reminder batch failed:', err.message ?? err),
+    );
+    reminderTimer = setInterval(() => {
+      console.log('Running daily payment reminders...');
+      runReminderBatch(1, undefined, 'both').catch((err: Error) =>
+        console.error('Daily reminder batch failed:', err.message ?? err),
+      );
+    }, 24 * 60 * 60 * 1000);
+  }, ms);
+
+  console.log('Daily payment reminders scheduled at 13:30 UTC (7:00 PM IST)');
+}
 
 // Database connection test
 async function testDatabaseConnection(): Promise<void> {
@@ -121,6 +145,7 @@ async function startServer(): Promise<void> {
       console.log('');
 
       startTelegramBot();
+      setupDailyReminders();
 
       console.log('📋 Available endpoints:');
       console.log(`   GET  http://localhost:${PORT}/`);
@@ -138,6 +163,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n⚠️  ${signal} received, starting graceful shutdown...`);
 
   stopTelegramBot();
+
+  if (reminderTimer) {
+    clearInterval(reminderTimer);
+    reminderTimer = null;
+  }
 
   if (server) {
     server.close(async () => {
