@@ -38,22 +38,27 @@ jobs:
         env:
           VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
 
-      - name: Clean up existing releases for this version
+      - name: Delete existing release tag if exists
         shell: bash
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          gh release list --repo ${{ github.repository }} --limit 50 | grep "v$VERSION" | awk '{print $1}' | while read tag; do
-            echo "Deleting release for tag: $tag"
-            gh release delete "$tag" --yes --repo ${{ github.repository }} 2>/dev/null || true
-          done
+          gh release delete "v$VERSION" --yes --cleanup-tag --repo ${{ github.repository }} 2>/dev/null
+          echo "Cleanup complete (errors are ok if release didn't exist)"
         working-directory: desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Package & publish Electron app
+      - name: Re-push tag (after cleanup deletes it)
         shell: bash
         run: |
-          npx electron-builder --win --publish always
+          VERSION=$(node -p "require('./package.json').version")
+          git tag -f "v$VERSION"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "v$VERSION"
+        working-directory: desktop-app
+
+      - name: Package & publish Electron app
+        shell: bash
+        run: npx electron-builder --win --publish always
         working-directory: desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
