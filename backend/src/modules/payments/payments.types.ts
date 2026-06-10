@@ -43,7 +43,8 @@ export interface RecordPaymentDTO {
   amount: number;
   fee_month?: number;
   fee_year?: number;
-  payment_method?: 'upi';  // Optional, defaults to 'upi'
+  payment_method?: 'upi';
+  payment_date?: string;
   transaction_id?: string;
   notes?: string;
   gateway_provider?: PaymentGatewayProvider;

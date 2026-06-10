@@ -87,6 +87,7 @@ export async function recordPayment(req: AuthRequest, res: Response) {
       ...(body.payment_method ? { payment_method: body.payment_method } : {}),
       ...(body.transaction_id ? { transaction_id: body.transaction_id } : {}),
       ...(body.notes ? { notes: body.notes } : {}),
+      ...(body.payment_date ? { payment_date: body.payment_date } : {}),
     };
 
     if (!data.student_id || !data.amount) {

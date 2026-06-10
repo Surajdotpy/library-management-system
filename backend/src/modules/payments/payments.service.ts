@@ -1115,11 +1115,8 @@ export async function recordPayment(
       );
     }
 
-    const todayResult = await client.query<{ today: string }>(
-      'SELECT CURRENT_DATE::text AS today',
-    );
-    const todayRow = todayResult.rows[0];
-    const todayDate = parseDateOnly(todayRow?.today ?? new Date().toISOString().slice(0, 10));
+    const providedDate = data.payment_date?.trim() ? parseDateOnly(data.payment_date.trim()) : null;
+    const todayDate = providedDate ?? parseDateOnly(new Date().toISOString().slice(0, 10));
 
     const existingPendingResult = await client.query<{ id: number }>(
       `
@@ -1178,7 +1175,7 @@ export async function recordPayment(
         notes
       ) VALUES (
         $1,
-        NOW(),
+        '${formatDateOnly(todayDate)}',
         $2,
         $3,
         $4,
