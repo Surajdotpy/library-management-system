@@ -1,4 +1,5 @@
 import pool from '../../config/db.ts';
+import { getPaymentAlertSummary } from '../payments/payments.service.ts';
 import type { FeeDashboard, StudentFeeStatus, OverdueStudent, DueGenerationResult, FeePaymentRecord, FeePaymentDetail } from './fees.types.ts';
 
 export async function getDashboard(branchId?: number): Promise<FeeDashboard> {
@@ -10,26 +11,23 @@ export async function getDashboard(branchId?: number): Promise<FeeDashboard> {
       COALESCE(SUM(amount) FILTER (WHERE fp.status = 'paid' AND DATE(fp.payment_date) = CURRENT_DATE), 0) AS today_collected,
       COUNT(*) FILTER (WHERE fp.status = 'paid' AND DATE(fp.payment_date) = CURRENT_DATE)::int AS today_count,
       COALESCE(SUM(amount) FILTER (WHERE fp.status = 'paid' AND EXTRACT(MONTH FROM fp.payment_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fp.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)), 0) AS month_collected,
-      COUNT(*) FILTER (WHERE fp.status = 'paid' AND EXTRACT(MONTH FROM fp.payment_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fp.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE))::int AS month_count,
-      COUNT(*) FILTER (WHERE fp.status = 'pending' AND s.is_active = true)::int AS pending_count,
-      COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'pending' AND s.is_active = true), 0) AS pending_amount,
-      COUNT(*) FILTER (WHERE fp.status = 'pending' AND fp.payment_date < CURRENT_DATE AND s.is_active = true)::int AS overdue_count,
-      COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'pending' AND fp.payment_date < CURRENT_DATE AND s.is_active = true), 0) AS overdue_amount
+      COUNT(*) FILTER (WHERE fp.status = 'paid' AND EXTRACT(MONTH FROM fp.payment_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fp.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE))::int AS month_count
     FROM fee_payments fp
     JOIN students s ON s.id = fp.student_id
-    LEFT JOIN branches b ON b.id = s.branch_id
     WHERE 1=1${branchFilter ? ` AND s.branch_id = $1` : ''}
   `, branchParam);
+
+  const alerts = await getPaymentAlertSummary(branchId);
 
   return {
     today_collected: Number(result.rows[0]?.today_collected ?? 0),
     today_count: result.rows[0]?.today_count ?? 0,
     month_collected: Number(result.rows[0]?.month_collected ?? 0),
     month_count: result.rows[0]?.month_count ?? 0,
-    pending_count: result.rows[0]?.pending_count ?? 0,
-    pending_amount: Number(result.rows[0]?.pending_amount ?? 0),
-    overdue_count: result.rows[0]?.overdue_count ?? 0,
-    overdue_amount: Number(result.rows[0]?.overdue_amount ?? 0),
+    pending_count: alerts.overdue_count + alerts.due_today_count + alerts.due_soon_count,
+    pending_amount: 0,
+    overdue_count: alerts.overdue_count,
+    overdue_amount: 0,
   };
 }
 

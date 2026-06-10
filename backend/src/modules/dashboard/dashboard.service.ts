@@ -220,13 +220,13 @@ async function getBranchOverview(): Promise<DashboardBranchOverview[]> {
         b.id AS branch_id,
         b.name AS branch_name,
         b.code AS branch_code,
-        COALESCE(b.total_capacity, 0) AS total_capacity,
+        COALESCE(se.total_seats, 0)::int AS total_capacity,
         COALESCE(st.total_students, 0)::int AS total_students,
         COALESCE(st.active_students, 0)::int AS active_students,
         COALESCE(att.currently_inside, 0)::int AS currently_inside,
         CASE
-          WHEN COALESCE(b.total_capacity, 0) > 0
-            THEN ROUND((COALESCE(att.currently_inside, 0)::numeric / b.total_capacity) * 100, 2)
+          WHEN COALESCE(se.total_seats, 0) > 0
+            THEN ROUND((COALESCE(att.currently_inside, 0)::numeric / se.total_seats) * 100, 2)
           ELSE 0
         END AS occupancy_rate,
         COALESCE(pay.monthly_revenue, 0) AS monthly_revenue
@@ -250,6 +250,14 @@ async function getBranchOverview(): Promise<DashboardBranchOverview[]> {
           AND a.exit_time IS NULL
         GROUP BY s.branch_id
       ) att ON att.branch_id = b.id
+      LEFT JOIN (
+        SELECT
+          branch_id,
+          COUNT(*)::int AS total_seats
+        FROM seats
+        WHERE status = 'active'
+        GROUP BY branch_id
+      ) se ON se.branch_id = b.id
       LEFT JOIN (
         SELECT
           s.branch_id,
