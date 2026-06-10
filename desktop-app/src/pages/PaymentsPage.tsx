@@ -1170,7 +1170,7 @@ export default function PaymentsPage() {
                     {hasSelectedPendingPayment && (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                         {selectedPendingCashfreePayment
-                          ? 'This student already has a pending Cashfree request. Continue that flow below or wait for webhook confirmation before creating another payment.'
+                          ? 'This student has a pending Cashfree request. A new request will auto-cancel the old one.'
                           : 'This student already has a pending manual payment submission. Confirm or resolve it before creating another payment.'}
                       </div>
                     )}
@@ -1194,12 +1194,10 @@ export default function PaymentsPage() {
                       type="button"
                       variant="secondary"
                       onClick={handleCreateCashfreeRequest}
-                      disabled={!selectedStudent || paymentLoading || hasSelectedPendingPayment}
+                      disabled={!selectedStudent || paymentLoading}
                       fullWidth
                     >
-                      {hasSelectedPendingPayment
-                        ? 'Existing Payment Pending'
-                        : 'Create Cashfree Request'}
+                      Create Cashfree Request
                     </Button>
 
                     {(cashfreeRequest || selectedPendingCashfreePayment) && (

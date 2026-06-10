@@ -1340,7 +1340,10 @@ export async function createCashfreePaymentRequest(
     );
 
     if (existingPendingResult.rows.length > 0) {
-      throw new Error('Payment is already pending verification for this student');
+      await client.query(
+        `UPDATE fee_payments SET status = 'rejected', verification_source = 'auto_cancel', verified_by = $1, verified_at = CURRENT_TIMESTAMP WHERE student_id = $2 AND status = 'pending'`,
+        [requestedBy, data.student_id],
+      );
     }
 
     await client.query('COMMIT');
