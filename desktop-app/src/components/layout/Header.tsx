@@ -595,11 +595,7 @@ export function Header({
 
         <div ref={notificationsContainerRef} className="relative flex items-start">
           <div className="group relative mr-1 flex items-center gap-2 rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs transition-colors hover:border-purple-300 hover:bg-purple-50">
-            {updateState.currentVersion ? (
-              <span className="font-semibold text-gray-500">v{updateState.currentVersion}</span>
-            ) : (
-              <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
-            )}
+            <span className="font-semibold text-gray-500">v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '...'}</span>
 
             {updateState.status === 'checking' && (
               <Loader2 className="h-3 w-3 animate-spin text-purple-500" />

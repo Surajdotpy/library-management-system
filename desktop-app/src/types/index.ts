@@ -3,6 +3,10 @@
  * Import types like: import { User, Student } from '@/types';
  */
 
+declare global {
+  const __APP_VERSION__: string;
+}
+
 // Auth types
 export type {
   User,
