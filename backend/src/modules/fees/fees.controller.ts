@@ -26,7 +26,7 @@ export async function getStudentStatuses(req: Request, res: Response): Promise<v
     const branchId = getBranchFilter((req as AuthRequest).user);
     const month = req.query.month ? Number(req.query.month) : undefined;
     const year = req.query.year ? Number(req.query.year) : undefined;
-    const data = await feesService.getStudentFeeStatuses(branchId, month, year);
+    const data = await feesService.getStudentFeeStatuses(branchId);
     res.json({ success: true, data });
   } catch (error: any) {
     console.error('Fee statuses error:', error?.message ?? error);

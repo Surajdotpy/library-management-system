@@ -1,5 +1,5 @@
 import pool from '../../config/db.ts';
-import { getPaymentAlertSummary } from '../payments/payments.service.ts';
+import { getPaymentAlertSummary, getPendingPayments } from '../payments/payments.service.ts';
 import type { FeeDashboard, StudentFeeStatus, OverdueStudent, DueGenerationResult, FeePaymentRecord, FeePaymentDetail } from './fees.types.ts';
 
 export async function getDashboard(branchId?: number): Promise<FeeDashboard> {
@@ -31,38 +31,24 @@ export async function getDashboard(branchId?: number): Promise<FeeDashboard> {
   };
 }
 
-export async function getStudentFeeStatuses(branchId?: number, month?: number, year?: number): Promise<StudentFeeStatus[]> {
-  const targetMonth = month ?? new Date().getMonth() + 1;
-  const targetYear = year ?? new Date().getFullYear();
+export async function getStudentFeeStatuses(branchId?: number): Promise<StudentFeeStatus[]> {
+  const pending = await getPendingPayments(branchId);
 
-  const result = await pool.query(`
-    SELECT
-      s.id AS student_id,
-      s.student_id AS student_code,
-      s.name,
-      b.name AS branch_name,
-      s.study_plan,
-      s.monthly_fee,
-      CASE
-        WHEN fp.status = 'paid' THEN 'paid'
-        WHEN fp.payment_date < CURRENT_DATE THEN 'overdue'
-        ELSE 'pending'
-      END AS status,
-      COALESCE(fp.amount, 0) AS paid_amount,
-      TO_CHAR(fp.payment_date, 'DD Mon YYYY') AS payment_date,
-      TO_CHAR(fp.coverage_start_date, 'DD Mon YYYY') AS coverage_start,
-      TO_CHAR(fp.coverage_end_date, 'DD Mon YYYY') AS coverage_end
-    FROM students s
-    JOIN branches b ON b.id = s.branch_id
-    LEFT JOIN fee_payments fp ON fp.student_id = s.id
-      AND fp.fee_month = $1
-      AND fp.fee_year = $2
-    WHERE s.is_active = true
-      ${branchId ? 'AND s.branch_id = $3' : ''}
-    ORDER BY b.name, s.name
-  `, branchId ? [targetMonth, targetYear, branchId] : [targetMonth, targetYear]);
-
-  return result.rows;
+  return pending.map((p) => ({
+    student_id: p.student_id,
+    student_code: p.student_code,
+    name: p.student_name,
+    branch_name: p.branch_name,
+    study_plan: '',
+    monthly_fee: p.monthly_fee,
+    status: (p.due_status === 'overdue' || p.due_status === 'due_today') ? 'overdue' as const
+      : p.due_status === 'due_soon' ? 'pending' as const
+      : 'paid' as const,
+    paid_amount: 0,
+    payment_date: p.paid_through_date as unknown as string ?? null,
+    coverage_start: null as string | null,
+    coverage_end: null as string | null,
+  }));
 }
 
 export async function getOverdueStudents(branchId?: number): Promise<OverdueStudent[]> {
