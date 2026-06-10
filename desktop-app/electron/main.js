@@ -275,7 +275,6 @@ function createWindow() {
 }
 
 ipcMain.handle('app-update:get-state', async (event) => {
-  ensureTrustedRendererSender(event);
   return updateState;
 });
 ipcMain.handle('app-update:check', async (event) => {
