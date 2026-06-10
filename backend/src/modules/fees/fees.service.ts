@@ -1,5 +1,5 @@
 import pool from '../../config/db.ts';
-import { getPaymentAlertSummary, getPendingPayments } from '../payments/payments.service.ts';
+import { getPaymentAlertSummary, getStudentPaymentSnapshots } from '../payments/payments.service.ts';
 import type { FeeDashboard, StudentFeeStatus, OverdueStudent, DueGenerationResult, FeePaymentRecord, FeePaymentDetail } from './fees.types.ts';
 
 export async function getDashboard(branchId?: number): Promise<FeeDashboard> {
@@ -32,9 +32,9 @@ export async function getDashboard(branchId?: number): Promise<FeeDashboard> {
 }
 
 export async function getStudentFeeStatuses(branchId?: number): Promise<StudentFeeStatus[]> {
-  const pending = await getPendingPayments(branchId);
+  const snapshots = await getStudentPaymentSnapshots(branchId);
 
-  return pending.map((p) => ({
+  return snapshots.map((p) => ({
     student_id: p.student_id,
     student_code: p.student_code,
     name: p.student_name,

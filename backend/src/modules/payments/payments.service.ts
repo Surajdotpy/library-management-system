@@ -788,7 +788,7 @@ async function getTodayDateString(): Promise<string> {
   return result.rows[0]?.today ?? new Date().toISOString().slice(0, 10);
 }
 
-async function getStudentPaymentSnapshots(branchId?: number): Promise<PendingPayment[]> {
+export async function getStudentPaymentSnapshots(branchId?: number): Promise<PendingPayment[]> {
   const params: number[] = [];
   let query = `
     SELECT
