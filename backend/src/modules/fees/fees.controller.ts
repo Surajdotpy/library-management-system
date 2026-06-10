@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../auth/auth.types.ts';
 import * as feesService from './fees.service.ts';
+import { getPendingPayments } from '../payments/payments.service.ts';
 import { pushPaymentAlert } from '../telegram/telegram-bot.service.ts';
 
 function getBranchFilter(user: AuthRequest['user']): number | undefined {
@@ -36,8 +37,23 @@ export async function getStudentStatuses(req: Request, res: Response): Promise<v
 export async function getOverdueStudents(req: Request, res: Response): Promise<void> {
   try {
     const branchId = getBranchFilter((req as AuthRequest).user);
-    const data = await feesService.getOverdueStudents(branchId);
-    res.json({ success: true, data });
+    const pending = await getPendingPayments(branchId);
+    const overdue = pending
+      .filter((p) => p.due_status === 'overdue' || p.due_status === 'due_today')
+      .map((p) => ({
+        student_id: p.student_id,
+        student_code: p.student_code,
+        name: p.student_name,
+        branch_name: p.branch_name,
+        phone: p.student_phone,
+        monthly_fee: p.monthly_fee,
+        overdue_months: 1,
+        total_due: p.amount,
+        last_paid_date: p.paid_through_date,
+        due_status: p.due_status,
+        next_due_date: p.next_due_date,
+      }));
+    res.json({ success: true, data: overdue });
   } catch (error: any) {
     console.error('Overdue students error:', error?.message ?? error);
     res.status(500).json({ success: false, error: 'Failed to load overdue students' });
