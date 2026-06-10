@@ -38,9 +38,35 @@ jobs:
         env:
           VITE_API_BASE_URL: https://coffeeaurkitaab.co.in/api
 
-      - name: Package & publish Electron app
+      - name: Delete any existing release for this version
         shell: bash
-        run: npx electron-builder --win --publish always
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release delete "v$VERSION" --yes --repo ${{ github.repository }} 2>/dev/null || true
+        working-directory: desktop-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package Electron app
+        shell: bash
+        run: |
+          npx electron-builder --win
+        working-directory: desktop-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to GitHub Releases
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cd release
+          gh release create "v$VERSION" \
+            "Coffee-aur-Kitaab-Setup-${VERSION}.exe" \
+            "Coffee-aur-Kitaab-Setup-${VERSION}.exe.blockmap" \
+            "latest.yml" \
+            --title "$VERSION" \
+            --notes "Release v$VERSION" \
+            --repo ${{ github.repository }}
         working-directory: desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
