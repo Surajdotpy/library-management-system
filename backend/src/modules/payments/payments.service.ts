@@ -735,13 +735,15 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
   const nextDueDate = paidThroughDate ? addDays(paidThroughDate, 1) : registrationDate;
   const daysUntilDue = diffDays(today, nextDueDate);
   const dueStatus: PendingPayment['due_status'] =
-    daysUntilDue < 0
-      ? 'overdue'
-      : daysUntilDue === 0
-        ? 'due_today'
-        : daysUntilDue <= DUE_SOON_WINDOW_DAYS
-        ? 'due_soon'
-        : 'current';
+    paidThroughDate == null
+      ? 'current'
+      : daysUntilDue < 0
+        ? 'overdue'
+        : daysUntilDue === 0
+          ? 'due_today'
+          : daysUntilDue <= DUE_SOON_WINDOW_DAYS
+          ? 'due_soon'
+          : 'current';
 
   const pendingCycles =
     daysUntilDue <= 0 ? Math.floor(Math.abs(daysUntilDue) / PAYMENT_CYCLE_DAYS) + 1 : 0;
