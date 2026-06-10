@@ -732,7 +732,35 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
   const paidThroughDate = snapshot.paid_through_date
     ? parseDateOnly(snapshot.paid_through_date)
     : null;
-  const nextDueDate = paidThroughDate ? addDays(paidThroughDate, 1) : addDays(registrationDate, PAYMENT_CYCLE_DAYS);
+  // Students who have never paid: no cycle started yet
+  if (!paidThroughDate) {
+    return {
+      student_id: snapshot.student_id,
+      student_name: snapshot.student_name,
+      student_code: snapshot.student_code,
+      student_email: snapshot.student_email,
+      student_phone: snapshot.student_phone,
+      branch_id: snapshot.branch_id,
+      branch_name: snapshot.branch_name,
+      monthly_fee: Number.parseFloat(String(snapshot.monthly_fee)),
+      pending_cycles: 0,
+      total_pending: 0,
+      last_payment_date: null,
+      paid_through_date: null,
+      next_due_date: new Date(),
+      days_until_due: 0,
+      due_status: 'current' as const,
+      renewal_amount: Number.parseFloat(String(snapshot.monthly_fee)),
+      last_paid_fee_month: null,
+      last_paid_fee_year: null,
+      recommended_reminder_stage: null,
+      last_reminder_at: null,
+      last_reminder_channel: null,
+      last_reminder_stage: null,
+    };
+  }
+
+  const nextDueDate = addDays(paidThroughDate, 1);
   const daysUntilDue = diffDays(today, nextDueDate);
   const dueStatus: PendingPayment['due_status'] =
     daysUntilDue < 0
