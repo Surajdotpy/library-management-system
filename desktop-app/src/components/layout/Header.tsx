@@ -590,61 +590,65 @@ export function Header({
         </div>
 
         <div ref={notificationsContainerRef} className="relative flex items-start">
-          {updateState.currentVersion && (
-            <div className="group relative mr-1 flex items-center gap-2 rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs transition-colors hover:border-purple-300 hover:bg-purple-50">
-              <span className="font-semibold text-gray-500">v{updateState.currentVersion}</span>
+          <div className="group relative mr-1 flex items-center gap-2 rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs transition-colors hover:border-purple-300 hover:bg-purple-50">
+            <span className="font-semibold text-gray-500">{updateState.currentVersion ? `v${updateState.currentVersion}` : '...'}</span>
 
-              {updateState.status === 'checking' && (
-                <Loader2 className="h-3 w-3 animate-spin text-purple-500" />
-              )}
+            {updateState.status === 'checking' && (
+              <Loader2 className="h-3 w-3 animate-spin text-purple-500" />
+            )}
 
-              {updateState.status === 'downloading' && (
-                <span className="text-purple-600 font-medium">{updateState.progress}%</span>
-              )}
+            {updateState.status === 'downloading' && (
+              <span className="text-purple-600 font-medium">{updateState.progress}%</span>
+            )}
 
-              {updateState.status === 'available' && (
-                <button
-                  type="button"
-                  onClick={handleDownloadUpdate}
-                  className="flex items-center gap-1 text-purple-600 font-medium hover:text-purple-800"
-                >
-                  <Download className="h-3 w-3" />
-                  v{updateState.targetVersion}
-                </button>
-              )}
+            {updateState.status === 'available' && (
+              <button
+                type="button"
+                onClick={handleDownloadUpdate}
+                className="flex items-center gap-1 text-purple-600 font-medium hover:text-purple-800"
+              >
+                <Download className="h-3 w-3" />
+                Update to v{updateState.targetVersion}
+              </button>
+            )}
 
-              {updateState.status === 'downloaded' && (
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-green-600 font-medium"
-                >
-                  <RefreshCcw className="h-3 w-3" />
-                  Restart
-                </button>
-              )}
+            {updateState.status === 'downloaded' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const win = window as any;
+                  if (win.appUpdates) win.appUpdates.install();
+                }}
+                className="flex items-center gap-1 text-green-600 font-medium animate-pulse"
+              >
+                <RefreshCcw className="h-3 w-3" />
+                Restart to update
+              </button>
+            )}
 
-              {updateState.status === 'error' && (
-                <button
-                  type="button"
-                  onClick={handleCheckUpdate}
-                  className="flex items-center gap-1 text-red-500 hover:text-red-700"
-                >
-                  <RefreshCcw className="h-3 w-3" />
-                  Retry
-                </button>
-              )}
+            {updateState.status === 'error' && (
+              <button
+                type="button"
+                onClick={handleCheckUpdate}
+                className="flex items-center gap-1 text-red-500 hover:text-red-700"
+                title={updateState.error || 'Update check failed'}
+              >
+                <RefreshCcw className="h-3 w-3" />
+                Retry
+              </button>
+            )}
 
-              {updateState.status === 'idle' && (
-                <button
-                  type="button"
-                  onClick={handleCheckUpdate}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <RefreshCcw className="h-3 w-3 text-gray-400 hover:text-purple-600" />
-                </button>
-              )}
-            </div>
-          )}
+            {(updateState.status === 'idle' || updateState.status === 'dev') && (
+              <button
+                type="button"
+                onClick={handleCheckUpdate}
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Check for updates"
+              >
+                <RefreshCcw className="h-3 w-3 text-gray-400 hover:text-purple-600" />
+              </button>
+            )}
+          </div>
 
           <button
             type="button"
