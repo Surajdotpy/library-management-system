@@ -311,7 +311,7 @@ export async function getDashboardSummary(branchId?: number): Promise<DashboardS
 
   const totalCapacity = branchId == null
     ? (branchOverview ?? []).reduce((sum, item) => sum + item.total_capacity, 0)
-    : branch?.total_capacity ?? 0;
+    : (await pool.query('SELECT COUNT(*)::int AS cnt FROM seats WHERE branch_id = $1 AND status = $2', [branchId, 'active'])).rows[0]?.cnt ?? 0;
 
   const occupancyRate = totalCapacity > 0
     ? Number.parseFloat(
