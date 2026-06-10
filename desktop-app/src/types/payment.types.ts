@@ -49,6 +49,7 @@ export interface RecordPaymentRequest {
   fee_month?: number;
   fee_year?: number;
   payment_method?: 'upi';
+  payment_date?: string;
   transaction_id?: string;
   notes?: string;
 }

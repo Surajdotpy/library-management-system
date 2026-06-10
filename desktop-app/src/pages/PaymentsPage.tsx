@@ -216,6 +216,7 @@ interface PaymentFormState {
   payment_method: 'upi';
   transaction_id: string;
   notes: string;
+  pay_date: string;
 }
 
 export default function PaymentsPage() {
@@ -265,6 +266,7 @@ export default function PaymentsPage() {
     payment_method: 'upi',
     transaction_id: '',
     notes: '',
+    pay_date: new Date().toISOString().slice(0, 10),
   });
 
   const fetchPaymentsData = async (showLoader: boolean = true) => {
@@ -619,6 +621,7 @@ export default function PaymentsPage() {
         payment_method: 'upi',
         transaction_id: paymentForm.transaction_id?.trim() || undefined,
         notes: paymentForm.notes?.trim() || undefined,
+        payment_date: paymentForm.pay_date || undefined,
       });
 
       setPaymentSuccess(
@@ -630,6 +633,7 @@ export default function PaymentsPage() {
         payment_method: 'upi',
         transaction_id: '',
         notes: '',
+        pay_date: new Date().toISOString().slice(0, 10),
       });
       setSelectedStudentPayments([]);
 
@@ -1156,6 +1160,17 @@ export default function PaymentsPage() {
                       fullWidth
                       disabled={paymentLoading}
                     />
+
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-gray-700">Payment Date</label>
+                      <input
+                        type="date"
+                        value={paymentForm.pay_date || ''}
+                        onChange={(event) => updatePaymentForm('pay_date', event.target.value)}
+                        className="w-full rounded-xl border-2 border-gray-200 px-4 py-2.5 text-gray-900 focus:border-purple-500 focus:outline-none"
+                        disabled={paymentLoading}
+                      />
+                    </div>
 
                     <Input
                       label="Notes"
