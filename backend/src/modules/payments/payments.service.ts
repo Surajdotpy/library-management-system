@@ -1699,8 +1699,20 @@ export async function getAllPayments(
   };
 }
 
+// Auto-expire pending payments with expired gateway sessions
+async function autoExpirePendingPayments(): Promise<void> {
+  await pool.query(`
+    UPDATE fee_payments
+    SET status = 'failed'
+    WHERE status = 'pending'
+      AND gateway_expires_at IS NOT NULL
+      AND gateway_expires_at < NOW()
+  `);
+}
+
 // Get pending payments
 export async function getPendingPayments(branchId?: number): Promise<PendingPayment[]> {
+  await autoExpirePendingPayments();
   const statuses = await getStudentPaymentSnapshots(branchId);
 
   return statuses
