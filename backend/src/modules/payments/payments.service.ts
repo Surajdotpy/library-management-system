@@ -1287,7 +1287,7 @@ export async function cancelPayment(
     }
 
     await client.query(
-      `UPDATE fee_payments SET status = 'failed', verification_source = 'admin_cancel', verified_by = $1, verified_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      `UPDATE fee_payments SET status = 'failed', verification_source = NULL, verified_by = $1, verified_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [cancelledBy, paymentId],
     );
 
@@ -1338,7 +1338,7 @@ export async function createCashfreePaymentRequest(
 
     if (existingPendingResult.rows.length > 0) {
       await client.query(
-        `UPDATE fee_payments SET status = 'failed', verification_source = 'auto_cancel', verified_by = $1, verified_at = CURRENT_TIMESTAMP WHERE student_id = $2 AND status = 'pending'`,
+        `UPDATE fee_payments SET status = 'failed', verification_source = NULL, verified_by = $1, verified_at = CURRENT_TIMESTAMP WHERE student_id = $2 AND status = 'pending'`,
         [requestedBy, data.student_id],
       );
     }
