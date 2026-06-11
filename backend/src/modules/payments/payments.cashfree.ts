@@ -207,7 +207,10 @@ function extractCheckoutUrl(payload: Record<string, unknown> | null): string | n
     getNestedString(payload, 'data', 'url') ||
     getNestedString(payload, 'data', 'payload', 'url') ||
     getNestedString(payload, 'data', 'payload', 'link') ||
+    getNestedString(payload, 'data', 'payload', 'payment_link') ||
     getNestedString(payload, 'order_meta', 'payment_link') ||
+    getNestedString(payload, 'cf_payment_link') ||
+    getNestedString(payload, 'link') ||
     null
   );
 }
@@ -475,6 +478,7 @@ export async function createCashfreePaymentSession(
 
   const responseText = await response.text();
   const parsedResponse = parseJsonRecord(responseText);
+  console.log('Cashfree order response:', JSON.stringify(parsedResponse).slice(0, 500));
 
   if (!response.ok) {
     throw new Error(getCashfreeErrorMessage(parsedResponse, 'Cashfree order creation failed'));
