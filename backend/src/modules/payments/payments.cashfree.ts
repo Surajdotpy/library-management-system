@@ -347,51 +347,50 @@ async function createCashfreeUpiQr(
   checkoutUrl: string | null;
   upiIntent: string | null;
 }> {
-  let response: Response;
-
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CASHFREE_API_TIMEOUT_MS);
 
-    try {
-      response = await fetch(`${getCashfreeApiBase(mode)}/orders/sessions`, {
-        method: 'POST',
-        headers: {
-          ...buildCashfreeHeaders({
-            includeCredentials: true,
-            includeContentType: true,
-            requestId: orderId,
-          }),
-        },
-        body: JSON.stringify({
-          order_id: orderId,
-          order_amount: amount,
-          order_currency: 'INR',
-          payment_method: { upi: { channel: 'collect' } },
+    const response = await fetch(`${getCashfreeApiBase(mode)}/orders/${orderId}/payment-links`, {
+      method: 'POST',
+      headers: {
+        ...buildCashfreeHeaders({
+          includeCredentials: true,
+          includeContentType: true,
+          requestId: orderId,
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
+      },
+      body: JSON.stringify({
+        link_amount: amount,
+        link_currency: 'INR',
+        link_purpose: 'Library fee payment',
+        customer_details: {
+          customer_phone: '9999999999',
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const responseText = await response.text();
+    const parsedResponse = parseJsonRecord(responseText);
+    console.log('Cashfree payment-link response:', responseText.slice(0, 500));
+
+    if (!response.ok) {
+      console.error('Cashfree payment-link failed:', responseText);
+      return { checkoutUrl: null, upiIntent: null };
     }
+
+    const linkUrl = getNestedString(parsedResponse, 'link_url');
+    return {
+      checkoutUrl: linkUrl,
+      upiIntent: null,
+    };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown network error';
-    console.error('Cashfree UPI session error:', message);
+    console.error('Cashfree payment-link error:', error instanceof Error ? error.message : '');
     return { checkoutUrl: null, upiIntent: null };
   }
-
-  const responseText = await response.text();
-  const parsedResponse = parseJsonRecord(responseText);
-
-  if (!response.ok) {
-    console.error('Cashfree UPI session failed:', responseText);
-    return { checkoutUrl: null, upiIntent: null };
-  }
-
-  return {
-    checkoutUrl: extractCheckoutUrl(parsedResponse),
-    upiIntent: extractUpiIntent(parsedResponse),
-  };
 }
 
 export async function createCashfreePaymentSession(
