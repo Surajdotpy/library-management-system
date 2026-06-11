@@ -117,6 +117,7 @@ function getRenewalVariant(status: PendingPayment['due_status']): 'danger' | 'wa
   if (status === 'overdue') return 'danger';
   if (status === 'due_today') return 'warning';
   if (status === 'due_soon') return 'info';
+  if (status === 'pending') return 'warning';
   return 'success';
 }
 
@@ -124,6 +125,7 @@ function getRenewalLabel(status: PendingPayment['due_status']) {
   if (status === 'overdue') return 'Overdue';
   if (status === 'due_today') return 'Due Today';
   if (status === 'due_soon') return 'Due Soon';
+  if (status === 'pending') return 'Pending';
   return 'Current';
 }
 
