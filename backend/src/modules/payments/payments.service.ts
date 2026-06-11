@@ -745,9 +745,7 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
         ? 'overdue'
         : daysUntilDue === 0
           ? 'due_today'
-          : daysUntilDue <= DUE_SOON_WINDOW_DAYS
-            ? 'due_soon'
-            : 'current';
+          : 'pending';
 
     // FIX Bug 3: Use Math.ceil so that exactly 30 days late = 1 cycle (not 2).
     const pendingCycles =

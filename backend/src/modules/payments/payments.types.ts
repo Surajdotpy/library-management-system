@@ -129,7 +129,7 @@ export interface PendingPayment {
   paid_through_date: Date | null;
   next_due_date: Date;
   days_until_due: number;
-  due_status: 'overdue' | 'due_today' | 'due_soon' | 'current';
+  due_status: 'overdue' | 'due_today' | 'due_soon' | 'pending' | 'current';
   renewal_amount: number;
   last_paid_fee_month: number | null;
   last_paid_fee_year: number | null;
