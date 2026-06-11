@@ -483,13 +483,9 @@ export async function createCashfreePaymentSession(
     throw new Error('Cashfree did not return a payment_session_id');
   }
 
-  const upiQr = await createCashfreeUpiQr(mode, normalizedOrderId, input.amount);
-
-  const checkoutUrl = extractCheckoutUrl(parsedResponse) || upiQr.checkoutUrl
-    || (typeof parsedResponse?.cf_order_id === 'string'
-      ? `https://payments.cashfree.com/orders/${parsedResponse.cf_order_id}`
-      : null);
-  const upiIntent = extractUpiIntent(parsedResponse) || upiQr.upiIntent;
+  // Cashfree hosted checkout page - works for both sandbox and production
+  const checkoutUrl = `https://payments.cashfree.com/checkout/orders/${normalizedOrderId}?session_id=${paymentSessionId}`;
+  const upiIntent = extractUpiIntent(parsedResponse);
 
   return {
     provider: 'cashfree',
