@@ -486,25 +486,8 @@ export async function createCashfreePaymentSession(
     throw new Error('Cashfree did not return a payment_session_id');
   }
 
-  const baseCheckoutUrl = extractCheckoutUrl(parsedResponse);
-  const baseUpiIntent = extractUpiIntent(parsedResponse);
-  let hostedUpiLink = {
-    checkoutUrl: null as string | null,
-    upiIntent: null as string | null,
-  };
-  let hostedUpiLinkWarning: string | null = null;
-
-  try {
-    hostedUpiLink = await createCashfreeHostedUpiLink(mode, paymentSessionId);
-  } catch (error) {
-    hostedUpiLinkWarning =
-      error instanceof Error
-        ? error.message
-        : 'Cashfree could not create a hosted UPI payment link for this order';
-  }
-
-  const checkoutUrl = hostedUpiLink.checkoutUrl ?? baseCheckoutUrl;
-  const upiIntent = hostedUpiLink.upiIntent ?? baseUpiIntent;
+  const checkoutUrl = extractCheckoutUrl(parsedResponse);
+  const upiIntent = extractUpiIntent(parsedResponse);
 
   return {
     provider: 'cashfree',
@@ -518,12 +501,7 @@ export async function createCashfreePaymentSession(
     expires_at: orderExpiryTime ? new Date(orderExpiryTime) : null,
     order_status:
       typeof parsedResponse?.order_status === 'string' ? parsedResponse.order_status : 'ACTIVE',
-    note:
-      !checkoutUrl && !upiIntent
-        ? `Cashfree ${mode} order created successfully. No QR or direct hosted link came back, so continue with the payment session checkout flow from this session ID.`
-        : hostedUpiLinkWarning
-        ? `Cashfree ${mode} session created. The direct hosted-link step failed, so the app is using the fallback checkout payload returned by Cashfree.`
-        : `Cashfree ${mode} session created. Show the QR on the admin screen so the student can scan it with any UPI app.`,
+    note: `Cashfree ${mode} session created.`,
   };
 }
 
