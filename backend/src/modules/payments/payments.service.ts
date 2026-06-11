@@ -732,8 +732,38 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
   const paidThroughDate = snapshot.paid_through_date
     ? parseDateOnly(snapshot.paid_through_date)
     : null;
-  // Students who have never paid: no cycle started yet
+  const monthlyFee = Number.parseFloat(String(snapshot.monthly_fee));
+
+  // FIX Bug 1: Students who have never paid use registration_date + 30 days as their due date,
+  // not today. Calculate status and cycles properly instead of hardcoding 'current'.
   if (!paidThroughDate) {
+    const nextDueDate = addDays(registrationDate, PAYMENT_CYCLE_DAYS);
+    const daysUntilDue = diffDays(today, nextDueDate);
+    const dueStatus: PendingPayment['due_status'] =
+      daysUntilDue < 0
+        ? 'overdue'
+        : daysUntilDue === 0
+          ? 'due_today'
+          : daysUntilDue <= DUE_SOON_WINDOW_DAYS
+            ? 'due_soon'
+            : 'current';
+
+    // FIX Bug 3: Use Math.ceil so that exactly 30 days late = 1 cycle (not 2).
+    const pendingCycles =
+      daysUntilDue < 0 ? Math.ceil(Math.abs(daysUntilDue) / PAYMENT_CYCLE_DAYS) : 0;
+
+    // FIX Bug 2: Map due_soon (4–7 days) to 'before_7_days' reminder stage.
+    const recommendedReminderStage: PaymentReminderStage | null =
+      dueStatus === 'overdue'
+        ? 'overdue'
+        : dueStatus === 'due_today'
+          ? 'due_today'
+          : daysUntilDue <= 3
+            ? 'before_3_days'
+            : daysUntilDue <= DUE_SOON_WINDOW_DAYS
+              ? 'before_7_days'
+              : null;
+
     return {
       student_id: snapshot.student_id,
       student_name: snapshot.student_name,
@@ -742,18 +772,18 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
       student_phone: snapshot.student_phone,
       branch_id: snapshot.branch_id,
       branch_name: snapshot.branch_name,
-      monthly_fee: Number.parseFloat(String(snapshot.monthly_fee)),
-      pending_cycles: 0,
-      total_pending: 0,
+      monthly_fee: monthlyFee,
+      pending_cycles: pendingCycles,
+      total_pending: pendingCycles * monthlyFee,
       last_payment_date: null,
       paid_through_date: null,
-      next_due_date: new Date(),
-      days_until_due: 0,
-      due_status: 'current' as const,
-      renewal_amount: Number.parseFloat(String(snapshot.monthly_fee)),
+      next_due_date: nextDueDate,
+      days_until_due: daysUntilDue,
+      due_status: dueStatus,
+      renewal_amount: monthlyFee,
       last_paid_fee_month: null,
       last_paid_fee_year: null,
-      recommended_reminder_stage: null,
+      recommended_reminder_stage: recommendedReminderStage,
       last_reminder_at: null,
       last_reminder_channel: null,
       last_reminder_stage: null,
@@ -771,17 +801,21 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
           ? 'due_soon'
           : 'current';
 
+  // FIX Bug 3: Use Math.ceil so that exactly 30 days late = 1 cycle (not 2).
   const pendingCycles =
-    daysUntilDue <= 0 ? Math.floor(Math.abs(daysUntilDue) / PAYMENT_CYCLE_DAYS) + 1 : 0;
-  const monthlyFee = Number.parseFloat(String(snapshot.monthly_fee));
-  const recommendedReminderStage =
+    daysUntilDue < 0 ? Math.ceil(Math.abs(daysUntilDue) / PAYMENT_CYCLE_DAYS) : 0;
+
+  // FIX Bug 2: Map due_soon (4–7 days) to 'before_7_days' reminder stage.
+  const recommendedReminderStage: PaymentReminderStage | null =
     dueStatus === 'overdue'
       ? 'overdue'
       : dueStatus === 'due_today'
         ? 'due_today'
         : daysUntilDue <= 3
           ? 'before_3_days'
-          : null;
+          : daysUntilDue <= DUE_SOON_WINDOW_DAYS
+            ? 'before_7_days'
+            : null;
 
   return {
     student_id: snapshot.student_id,
@@ -815,6 +849,8 @@ async function getTodayDateString(): Promise<string> {
 }
 
 export async function getStudentPaymentSnapshots(branchId?: number): Promise<PendingPayment[]> {
+  await autoExpirePendingPayments();
+
   const params: number[] = [];
   let query = `
     SELECT
@@ -1740,7 +1776,6 @@ async function autoExpirePendingPayments(): Promise<void> {
 
 // Get pending payments
 export async function getPendingPayments(branchId?: number): Promise<PendingPayment[]> {
-  await autoExpirePendingPayments();
   const statuses = await getStudentPaymentSnapshots(branchId);
 
   return statuses
@@ -1832,6 +1867,14 @@ export async function sendPaymentReminder(
     throw new Error('Student not found or not accessible');
   }
 
+  const existingPending = await pool.query<{ id: number }>(
+    `SELECT id FROM fee_payments WHERE student_id = $1 AND status = 'pending' LIMIT 1`,
+    [studentId],
+  );
+  if (existingPending.rows.length > 0) {
+    throw new Error('Student already has a payment pending verification — no reminder needed');
+  }
+
   const reminder = buildReminderMessage(pendingPayment);
   const channels = resolveRequestedChannels(requestedChannel);
   const eligibleChannels: Array<'sms' | 'whatsapp'> = [];
@@ -1905,8 +1948,17 @@ export async function runReminderBatch(
   branchId?: number,
   requestedChannel: PaymentCommunicationRequestChannel = 'both',
 ): Promise<PaymentReminderBatchResult> {
+  const pendingStudentResult = await pool.query<{ student_id: number }>(
+    `SELECT DISTINCT student_id FROM fee_payments WHERE status = 'pending'`,
+  );
+  const pendingStudentIds = new Set(
+    pendingStudentResult.rows.map((r) => r.student_id),
+  );
+
   const watchlist = (await getStudentPaymentSnapshots(branchId)).filter(
-    (item) => item.recommended_reminder_stage != null,
+    (item) =>
+      item.recommended_reminder_stage != null &&
+      !pendingStudentIds.has(item.student_id),
   );
 
   const channels = resolveRequestedChannels(requestedChannel);

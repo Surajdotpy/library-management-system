@@ -81,7 +81,7 @@ export interface PaymentWithStudent extends Payment {
 export type PaymentCommunicationType = 'fee_reminder' | 'payment_receipt';
 export type PaymentCommunicationChannel = 'sms' | 'whatsapp';
 export type PaymentCommunicationRequestChannel = PaymentCommunicationChannel | 'both';
-export type PaymentReminderStage = 'before_3_days' | 'due_today' | 'overdue';
+export type PaymentReminderStage = 'before_3_days' | 'before_7_days' | 'due_today' | 'overdue';
 export type PaymentCommunicationStatus = 'logged' | 'sent' | 'failed';
 export type PaymentCommunicationDeliveryMode = 'log_only' | 'webhook' | 'provider';
 export type PaymentGatewayProvider = 'cashfree';
