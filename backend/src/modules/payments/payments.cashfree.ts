@@ -487,7 +487,9 @@ export async function createCashfreePaymentSession(
   }
 
   const checkoutUrl = extractCheckoutUrl(parsedResponse)
-    || `https://payments.cashfree.com/orders/session/${paymentSessionId}`;
+    || (typeof parsedResponse?.cf_order_id === 'string'
+      ? `https://payments.cashfree.com/orders/${parsedResponse.cf_order_id}`
+      : null);
   const upiIntent = extractUpiIntent(parsedResponse);
 
   return {
