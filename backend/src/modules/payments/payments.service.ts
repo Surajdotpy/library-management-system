@@ -1210,6 +1210,15 @@ export async function recordPayment(
       latestPaidCoverage.coverageEndDate,
     );
 
+    const feeMonth = data.fee_month ?? coverageEndDate.getUTCMonth() + 1;
+    const feeYear = data.fee_year ?? coverageEndDate.getUTCFullYear();
+
+    // Clean up any previous failed/cancelled payment for same student+month
+    await client.query(
+      `DELETE FROM fee_payments WHERE student_id = $1 AND fee_month = $2 AND fee_year = $3 AND status = 'failed'`,
+      [data.student_id, feeMonth, feeYear],
+    );
+
     const insertQuery = `
       INSERT INTO fee_payments (
         student_id,
@@ -1270,8 +1279,8 @@ export async function recordPayment(
       formatDateOnly(coverageStartDate),
       formatDateOnly(coverageEndDate),
       data.amount,
-      data.fee_month ?? coverageEndDate.getUTCMonth() + 1,
-      data.fee_year ?? coverageEndDate.getUTCFullYear(),
+      feeMonth,
+      feeYear,
       data.payment_method || 'upi',
       data.transaction_id || null,
       data.gateway_provider ?? null,
