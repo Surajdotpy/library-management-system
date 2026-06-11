@@ -222,7 +222,7 @@ function extractUpiIntent(payload: Record<string, unknown> | null): string | nul
     getNestedString(payload, 'data', 'payload', 'value'),
   ];
 
-  return candidates.find((value) => Boolean(value?.startsWith('upi://'))) ?? null;
+  return candidates.find((value) => Boolean(value)) ?? null;
 }
 
 function getMode(): PaymentGatewayMode {
