@@ -339,9 +339,10 @@ function buildMockCashfreeSession(input: CreateCashfreeOrderInput): CashfreePaym
   };
 }
 
-async function createCashfreeHostedUpiLink(
+async function createCashfreeUpiQr(
   mode: PaymentGatewayMode,
-  paymentSessionId: string,
+  orderId: string,
+  amount: number,
 ): Promise<{
   checkoutUrl: string | null;
   upiIntent: string | null;
@@ -359,19 +360,14 @@ async function createCashfreeHostedUpiLink(
           ...buildCashfreeHeaders({
             includeCredentials: true,
             includeContentType: true,
-            requestId: paymentSessionId,
+            requestId: orderId,
           }),
-          'x-client-device': 'desktop',
-          'x-client-os': 'windows',
-          'x-client-browser': 'chrome',
         },
         body: JSON.stringify({
-          payment_session_id: paymentSessionId,
-          payment_method: {
-            upi: {
-              channel: 'link',
-            },
-          },
+          order_id: orderId,
+          order_amount: amount,
+          order_currency: 'INR',
+          payment_method: { upi: { channel: 'collect' } },
         }),
         signal: controller.signal,
       });
@@ -380,21 +376,16 @@ async function createCashfreeHostedUpiLink(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown network error';
-    throw new Error(
-      `Cashfree hosted-link request failed. Check internet access, DNS/firewall rules, and sandbox credentials. ${message}`,
-    );
+    console.error('Cashfree UPI session error:', message);
+    return { checkoutUrl: null, upiIntent: null };
   }
 
   const responseText = await response.text();
   const parsedResponse = parseJsonRecord(responseText);
 
   if (!response.ok) {
-    throw new Error(
-      getCashfreeErrorMessage(
-        parsedResponse,
-        'Cashfree could not create a hosted UPI payment link for this order',
-      ),
-    );
+    console.error('Cashfree UPI session failed:', responseText);
+    return { checkoutUrl: null, upiIntent: null };
   }
 
   return {
@@ -493,11 +484,13 @@ export async function createCashfreePaymentSession(
     throw new Error('Cashfree did not return a payment_session_id');
   }
 
-  const checkoutUrl = extractCheckoutUrl(parsedResponse)
+  const upiQr = await createCashfreeUpiQr(mode, normalizedOrderId, input.amount);
+
+  const checkoutUrl = extractCheckoutUrl(parsedResponse) || upiQr.checkoutUrl
     || (typeof parsedResponse?.cf_order_id === 'string'
       ? `https://payments.cashfree.com/orders/${parsedResponse.cf_order_id}`
       : null);
-  const upiIntent = extractUpiIntent(parsedResponse);
+  const upiIntent = extractUpiIntent(parsedResponse) || upiQr.upiIntent;
 
   return {
     provider: 'cashfree',
