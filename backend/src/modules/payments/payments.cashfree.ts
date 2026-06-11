@@ -441,6 +441,9 @@ export async function createCashfreePaymentSession(
     order_currency: 'INR',
     customer_details: customerDetails,
     order_expiry_time: orderExpiryTime,
+    order_meta: {
+      payment_methods: 'upi',
+    },
   };
 
   let response: Response;
