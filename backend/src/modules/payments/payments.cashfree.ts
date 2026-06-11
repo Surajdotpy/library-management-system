@@ -486,7 +486,8 @@ export async function createCashfreePaymentSession(
     throw new Error('Cashfree did not return a payment_session_id');
   }
 
-  const checkoutUrl = extractCheckoutUrl(parsedResponse);
+  const checkoutUrl = extractCheckoutUrl(parsedResponse)
+    || `https://payments.cashfree.com/orders/session/${paymentSessionId}`;
   const upiIntent = extractUpiIntent(parsedResponse);
 
   return {
