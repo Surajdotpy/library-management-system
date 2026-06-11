@@ -38,6 +38,7 @@ import {
 export const PAYMENT_CYCLE_DAYS = 30;
 export const PAYMENT_CYCLE_END_OFFSET = PAYMENT_CYCLE_DAYS - 1;
 const DUE_SOON_WINDOW_DAYS = 7;
+const NEW_STUDENT_GRACE_DAYS = 7;
 const PUBLIC_PAYMENT_LINK_EXPIRES_IN = process.env.PAYMENT_PUBLIC_LINK_EXPIRES_IN || '48h';
 const PAYMENT_HISTORY_SELECT_FIELDS = `
   p.id,
@@ -734,10 +735,10 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
     : null;
   const monthlyFee = Number.parseFloat(String(snapshot.monthly_fee));
 
-  // FIX Bug 1: Students who have never paid use registration_date + 30 days as their due date,
-  // not today. Calculate status and cycles properly instead of hardcoding 'current'.
+  // Students who have never paid: due date = registration + 7 days grace period.
+  // After that, they show as overdue/due_today/due_soon.
   if (!paidThroughDate) {
-    const nextDueDate = addDays(registrationDate, PAYMENT_CYCLE_DAYS);
+    const nextDueDate = addDays(registrationDate, NEW_STUDENT_GRACE_DAYS);
     const daysUntilDue = diffDays(today, nextDueDate);
     const dueStatus: PendingPayment['due_status'] =
       daysUntilDue < 0
