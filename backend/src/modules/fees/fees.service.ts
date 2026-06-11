@@ -43,6 +43,7 @@ export async function getStudentFeeStatuses(branchId?: number): Promise<StudentF
     monthly_fee: p.monthly_fee,
     status: (p.due_status === 'overdue' || p.due_status === 'due_today') ? 'overdue' as const
       : p.due_status === 'due_soon' ? 'pending' as const
+      : p.due_status === 'pending' ? 'pending' as const
       : 'paid' as const,
     paid_amount: 0,
     payment_date: p.paid_through_date as unknown as string ?? null,
