@@ -519,7 +519,6 @@ export async function getAllPayments(req: AuthRequest, res: Response) {
     const page = parseInteger(req.query.page) ?? 1;
     const limit = parseInteger(req.query.limit) ?? 25;
 
-    // Only validate if branch_id was actually provided in query
     if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
@@ -576,7 +575,6 @@ export async function getPendingPayments(req: AuthRequest, res: Response) {
   try {
     const requestedBranchId = parseBranchId(req.query.branch_id);
 
-    // Only validate if branch_id was actually provided in query
     if (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) {
       return badRequest(res, 'Invalid branch ID');
     }
@@ -741,7 +739,6 @@ export async function getPaymentCommunications(req: AuthRequest, res: Response) 
     const paymentId = parseInteger(req.query.payment_id);
     const limit = parseInteger(req.query.limit) ?? 50;
 
-    // Only validate if values were actually provided (not undefined)
     if (
       (requestedBranchId !== undefined && Number.isNaN(requestedBranchId)) ||
       (studentId !== undefined && Number.isNaN(studentId)) ||
@@ -822,10 +819,13 @@ export async function sendPaymentReminder(req: AuthRequest, res: Response) {
 
     console.error('Send payment reminder error:', error);
 
+    // FIX: Added 'pending verification' so the new guard in sendPaymentReminder
+    // returns 400 instead of 500 when student already has a pending payment
     if (
       error.message.includes('not found') ||
       error.message.includes('reminder window') ||
-      error.message.includes('already sent')
+      error.message.includes('already sent') ||
+      error.message.includes('pending verification')
     ) {
       return badRequest(res, error.message);
     }

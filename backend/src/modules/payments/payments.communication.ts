@@ -256,6 +256,7 @@ export function resolveRequestedChannels(
   return ['sms', 'whatsapp'];
 }
 
+// FIX: Added before_7_days stage — covers 4-7 day window that was previously returning null
 export function getRecommendedReminderStage(
   pendingPayment: PendingPayment,
 ): PaymentReminderStage | null {
@@ -271,9 +272,14 @@ export function getRecommendedReminderStage(
     return 'before_3_days';
   }
 
+  if (pendingPayment.days_until_due <= 7) {
+    return 'before_7_days';
+  }
+
   return null;
 }
 
+// FIX: Added before_7_days message case — previously missing, would fall through to overdue message
 export function buildReminderMessage(pendingPayment: PendingPayment): {
   stage: PaymentReminderStage;
   subject: string;
@@ -291,6 +297,18 @@ export function buildReminderMessage(pendingPayment: PendingPayment): {
       ? pendingPayment.renewal_amount
       : pendingPayment.total_pending,
   );
+
+  if (stage === 'before_7_days') {
+    return {
+      stage,
+      subject: `Fee reminder for ${pendingPayment.student_name}`,
+      messageBody: [
+        `Reminder from ${pendingPayment.branch_name}.`,
+        `${pendingPayment.student_name}, your next library fee of ${amount} is due on ${nextDueDate}.`,
+        'Please plan to renew within the next week to keep your access active.',
+      ].join(' '),
+    };
+  }
 
   if (stage === 'before_3_days') {
     return {

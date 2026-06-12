@@ -38,7 +38,6 @@ import {
 export const PAYMENT_CYCLE_DAYS = 30;
 export const PAYMENT_CYCLE_END_OFFSET = PAYMENT_CYCLE_DAYS - 1;
 const DUE_SOON_WINDOW_DAYS = 7;
-const NEW_STUDENT_GRACE_DAYS = 7;
 const PUBLIC_PAYMENT_LINK_EXPIRES_IN = process.env.PAYMENT_PUBLIC_LINK_EXPIRES_IN || '48h';
 const PAYMENT_HISTORY_SELECT_FIELDS = `
   p.id,
@@ -735,17 +734,19 @@ function buildPendingPayment(today: Date, snapshot: StudentPaymentSnapshot): Pen
     : null;
   const monthlyFee = Number.parseFloat(String(snapshot.monthly_fee));
 
-  // Students who have never paid: due date = registration + 7 days grace period.
-  // After that, they show as overdue/due_today/due_soon.
+  // FIX Bug 1: Students who have never paid use registration_date + 30 days as their due date,
+  // not today. Calculate status and cycles properly instead of hardcoding 'current'.
   if (!paidThroughDate) {
-    const nextDueDate = addDays(registrationDate, NEW_STUDENT_GRACE_DAYS);
+    const nextDueDate = addDays(registrationDate, PAYMENT_CYCLE_DAYS);
     const daysUntilDue = diffDays(today, nextDueDate);
     const dueStatus: PendingPayment['due_status'] =
       daysUntilDue < 0
         ? 'overdue'
         : daysUntilDue === 0
           ? 'due_today'
-          : 'pending';
+          : daysUntilDue <= DUE_SOON_WINDOW_DAYS
+            ? 'due_soon'
+            : 'current';
 
     // FIX Bug 3: Use Math.ceil so that exactly 30 days late = 1 cycle (not 2).
     const pendingCycles =
@@ -1158,10 +1159,13 @@ async function insertCommunicationLog(input: {
 }
 
 // Record a new payment
+// skipPendingCheck: pass true from createCashfreePaymentRequest which already cancelled
+// any existing pending payment in its own transaction before calling this function.
 export async function recordPayment(
   data: RecordPaymentDTO,
   collectedBy: number,
   branchId?: number,
+  skipPendingCheck = false,
 ): Promise<Payment> {
   const client = await pool.connect();
 
@@ -1181,22 +1185,24 @@ export async function recordPayment(
     const providedDate = data.payment_date?.trim() ? parseDateOnly(data.payment_date.trim()) : null;
     const todayDate = providedDate ?? parseDateOnly(new Date().toISOString().slice(0, 10));
 
-    const existingPendingResult = await client.query<{ id: number }>(
-      `
-        SELECT
-          id
-        FROM fee_payments
-        WHERE student_id = $1
-          AND status = 'pending'
-        ORDER BY id DESC
-        LIMIT 1
-        FOR UPDATE
-      `,
-      [data.student_id],
-    );
+    if (!skipPendingCheck) {
+      const existingPendingResult = await client.query<{ id: number }>(
+        `
+          SELECT
+            id
+          FROM fee_payments
+          WHERE student_id = $1
+            AND status = 'pending'
+          ORDER BY id DESC
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [data.student_id],
+      );
 
-    if (existingPendingResult.rows.length > 0) {
-      throw new Error('Payment is already pending verification for this student');
+      if (existingPendingResult.rows.length > 0) {
+        throw new Error('Payment is already pending verification for this student');
+      }
     }
 
     const latestPaidCoverage = await getLatestPaidCoverage(client, data.student_id);
@@ -1208,15 +1214,6 @@ export async function recordPayment(
     const { coverageStartDate, coverageEndDate } = calculateCoverageWindow(
       todayDate,
       latestPaidCoverage.coverageEndDate,
-    );
-
-    const feeMonth = data.fee_month ?? coverageEndDate.getUTCMonth() + 1;
-    const feeYear = data.fee_year ?? coverageEndDate.getUTCFullYear();
-
-    // Clean up any previous failed/cancelled payment for same student+month
-    await client.query(
-      `DELETE FROM fee_payments WHERE student_id = $1 AND fee_month = $2 AND fee_year = $3 AND status = 'failed'`,
-      [data.student_id, feeMonth, feeYear],
     );
 
     const insertQuery = `
@@ -1279,8 +1276,8 @@ export async function recordPayment(
       formatDateOnly(coverageStartDate),
       formatDateOnly(coverageEndDate),
       data.amount,
-      feeMonth,
-      feeYear,
+      data.fee_month ?? coverageEndDate.getUTCMonth() + 1,
+      data.fee_year ?? coverageEndDate.getUTCFullYear(),
       data.payment_method || 'upi',
       data.transaction_id || null,
       data.gateway_provider ?? null,
@@ -1448,6 +1445,7 @@ export async function createCashfreePaymentRequest(
       },
       requestedBy,
       branchId,
+      true, // skipPendingCheck — old pending was already cancelled above in its own transaction
     );
     const publicAccessToken = generatePublicPaymentAccessToken(payment.id);
 
