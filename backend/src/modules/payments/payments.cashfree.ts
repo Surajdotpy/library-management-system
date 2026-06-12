@@ -483,8 +483,41 @@ export async function createCashfreePaymentSession(
     throw new Error('Cashfree did not return a payment_session_id');
   }
 
-  // Cashfree hosted checkout page - works for both sandbox and production
-  const checkoutUrl = `https://payments.cashfree.com/checkout/orders/${normalizedOrderId}?session_id=${paymentSessionId}`;
+  // Create payment link for this order
+  let checkoutUrl: string | null = null;
+  try {
+    const linkResponse = await fetch(`${getCashfreeApiBase(mode)}/links`, {
+      method: 'POST',
+      headers: buildCashfreeHeaders({
+        includeCredentials: true,
+        includeContentType: true,
+        requestId: normalizedOrderId,
+      }),
+      body: JSON.stringify({
+        link_id: `${normalizedOrderId}_link`,
+        link_amount: input.amount,
+        link_currency: 'INR',
+        link_purpose: input.note,
+        customer_details: {
+          customer_id: normalizedCustomerId,
+          customer_phone: customerPhone,
+          ...(input.customerName.trim() && { customer_name: input.customerName.trim() }),
+        },
+      }),
+      signal: AbortSignal.timeout(CASHFREE_API_TIMEOUT_MS),
+    });
+    const linkText = await linkResponse.text();
+    const linkData = parseJsonRecord(linkText);
+    if (linkResponse.ok && linkData) {
+      checkoutUrl = getNestedString(linkData, 'link_url');
+      console.log('Cashfree payment link created:', checkoutUrl);
+    } else {
+      console.error('Cashfree link creation failed:', linkText);
+    }
+  } catch (e: any) {
+    console.error('Cashfree link error:', e?.message ?? e);
+  }
+
   const upiIntent = extractUpiIntent(parsedResponse);
 
   return {
